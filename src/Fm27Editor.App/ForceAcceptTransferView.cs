@@ -32,13 +32,14 @@ public sealed partial class MainWindow
             heading,
             Loc.S("The board accepts every board request and Club Vision change you submit while this is turned on."));
 
-        if (session.Profile.IsArm64)
+        // A build whose profile has no measured board gates (or an architecture without a patch) cannot offer it.
+        if (session.ForceAccept.Plan(ForceAcceptPreset.BoardRequests).State == ForceAcceptPlanState.Unavailable)
         {
             return UiKit.Card(
                 Loc.S("Force Board Request (Experimental)"),
                 new TextBlock
                 {
-                    Text = Loc.S("Unavailable on this architecture."),
+                    Text = Loc.S("Unavailable on this game build."),
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = UiKit.TextMuted,
                 },

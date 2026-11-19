@@ -1151,6 +1151,11 @@
     "snapshotSize": "0x148"
   },
   "staff": {
+    "allowances": {
+      "teamManager": "0x80",
+      "humanMscc": "0x388",
+      "msccExtraStaff": "0x116C"
+    },
     "personDetails": {
       "personVtable": "0x5650E58",
       "caps": "0x1FC",

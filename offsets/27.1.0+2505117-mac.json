@@ -1160,6 +1160,11 @@
     "snapshotSize": "0x148"
   },
   "staff": {
+    "allowances": {
+      "teamManager": "0x80",
+      "humanMscc": "0x388",
+      "msccExtraStaff": "0x116C"
+    },
     "personDetails": {
       "personVtable": "0x5650E58",
       "caps": "0x1FC",
@@ -1459,7 +1464,12 @@
     "lastName": "0xD0",
     "futureId": "0xF8"
   },
-  "forceAccept": {},
+  "forceAccept": {
+    "boardRequestsRva": "0x2766368",
+    "boardRequestsOriginal": "A1 05 00 54",
+    "clubVisionRva": "0x1AB0744",
+    "clubVisionOriginal": "A4 04 00 54"
+  },
   "globalArrays": {
     "clubsSlotRva": "0x57A3180"
   }

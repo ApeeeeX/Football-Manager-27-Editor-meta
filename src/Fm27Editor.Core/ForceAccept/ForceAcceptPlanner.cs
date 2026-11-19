@@ -29,8 +29,10 @@ namespace Fm27Editor.Core.ForceAccept;
 /// <see cref="ForceAcceptSiteState.NotImplemented"/> and stays unavailable until that hook is measured.
 /// </para>
 /// <para>
-/// ARM64 presets are unavailable. The former transfer candidate is libcurl's HSTS callback validation, not transfer
-/// evaluation. No ARM64 acceptance site or human-club guard has been established; an RVA alone cannot enable one.
+/// On ARM64 only the board preset exists: both gates are single conditional branches (`b.ne` after the template
+/// verdict `ldrb [x,#0x81]; cmp #1`, and `b.mi` at the club-vision check), replaced by one NOP each. The profile
+/// carries each branch's original 4 bytes, because the displacement differs per build. The transfer and contract
+/// presets have no measured ARM64 site. The former transfer candidate is libcurl's HSTS callback validation.
 /// </para>
 /// </remarks>
 public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory memory, ulong moduleBase, ChangeJournal? journal = null)
@@ -40,7 +42,11 @@ public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory mem
     /// implemented x86-64 overwrite. No ARM64 byte sequences are offered until the acceptance logic is measured.
     /// </summary>
     sealed record Site(string Key, Func<ForceAcceptOffsets?, uint?> RvaFrom, byte[] Original, byte[] Replacement,
-        bool RequiresGuardedHook = false, Func<ForceAcceptOffsets?, byte[]?>? OriginalFrom = null);
+        bool RequiresGuardedHook = false, Func<ForceAcceptOffsets?, byte[]?>? OriginalFrom = null,
+        bool Arm64Nop = false);
+
+    /// <summary>ARM64 <c>nop</c>, replacing one 4-byte conditional branch.</summary>
+    static readonly byte[] Arm64NopBytes = [0x1F, 0x20, 0x03, 0xD5];
 
     static readonly IReadOnlyDictionary<ForceAcceptPreset, Site[]> Sites = new Dictionary<ForceAcceptPreset, Site[]>
     {
@@ -54,10 +60,10 @@ public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory mem
         [
             new("generalRequests", o => o?.BoardRequestsRva,
                 [0x0F, 0x85, 0xFD, 0x00, 0x00, 0x00], [0x90, 0x90, 0x90, 0x90, 0x90, 0x90],
-                OriginalFrom: o => o?.BoardRequestsOriginal),
+                OriginalFrom: o => o?.BoardRequestsOriginal, Arm64Nop: true),
             new("clubVision", o => o?.ClubVisionRva,
                 [0x78, 0x7C], [0x90, 0x90],
-                OriginalFrom: o => o?.ClubVisionOriginal),
+                OriginalFrom: o => o?.ClubVisionOriginal, Arm64Nop: true),
         ],
         // Contract: NOT IMPLEMENTED — the site is reported NotImplemented and never read, so no byte pattern can
         // enable the preset. The Cheat Engine preset (`K9__players-and-staff-always-accept-your-contract-offers`,
@@ -90,6 +96,16 @@ public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory mem
         ],
     };
 
+    /// <summary>
+    /// On ARM64 only a plan whose every site is a 4-byte branch replaced by NOP can be written: a plan carrying x86-64
+    /// bytes (or none) is refused before anything is read.
+    /// </summary>
+    void RefuseForeignArchitecture(ForceAcceptPlan plan)
+    {
+        if (profile.IsArm64 && !plan.Sites.All(s => s.Replacement.AsSpan().SequenceEqual(Arm64NopBytes) && s.Original.Length == 4))
+            throw new InvalidOperationException($"The {plan.Preset} preset has no measured ARM64 patch: nothing was written");
+    }
+
     /// <summary>Plans one preset against the current memory; reads only, writes nothing.</summary>
     public ForceAcceptPlan Plan(ForceAcceptPreset preset)
     {
@@ -97,16 +113,19 @@ public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory mem
         var planned = new List<ForceAcceptSitePlan>(Sites[preset].Length);
         foreach (var site in Sites[preset])
         {
+            byte[]? measured = site.OriginalFrom?.Invoke(profile.ForceAccept);
+            // ARM64 has no default branch bytes: the profile's measured 4 bytes are the only original accepted.
+            bool arm64Ready = arm64 && site.Arm64Nop && measured is { Length: 4 };
             byte[] original = arm64
-                ? []
-                : site.OriginalFrom?.Invoke(profile.ForceAccept) is { } custom && custom.Length == site.Original.Length
+                ? arm64Ready ? measured! : []
+                : measured is { } custom && custom.Length == site.Original.Length
                     ? custom
                     : site.Original;
-            byte[] replacement = arm64 ? [] : site.Replacement;
+            byte[] replacement = arm64 ? arm64Ready ? Arm64NopBytes : [] : site.Replacement;
             uint? rva = site.RvaFrom(profile.ForceAccept);
             // A preset whose reference is a guarded hook is never read: no byte pattern at the site can enable it,
             // and reading would only suggest it could be planned.
-            if (site.RequiresGuardedHook || arm64 && rva is not null)
+            if (site.RequiresGuardedHook || arm64 && !arm64Ready && rva is not null)
             {
                 planned.Add(new ForceAcceptSitePlan
                 {
@@ -186,8 +205,7 @@ public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory mem
     public int Apply(ForceAcceptPlan plan, bool gamePaused)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        if (profile.IsArm64)
-            throw new InvalidOperationException("Force accept is not implemented on ARM64: no acceptance hook has been measured");
+        RefuseForeignArchitecture(plan);
         if (!gamePaused)
             throw new InvalidOperationException("The force-accept presets are applied only while the game is paused");
         if (plan.State != ForceAcceptPlanState.Appliable)
@@ -242,8 +260,7 @@ public sealed class ForceAcceptPlanner(OffsetProfile profile, IProcessMemory mem
     public int Restore(ForceAcceptPlan plan, bool gamePaused)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        if (profile.IsArm64)
-            throw new InvalidOperationException("Force accept is not implemented on ARM64: no acceptance hook has been measured");
+        RefuseForeignArchitecture(plan);
         if (!gamePaused)
             throw new InvalidOperationException("The force-accept presets are restored only while the game is paused");
         if (plan.State != ForceAcceptPlanState.Active)

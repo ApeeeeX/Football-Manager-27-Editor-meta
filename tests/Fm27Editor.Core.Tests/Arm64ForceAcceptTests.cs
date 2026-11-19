@@ -100,6 +100,37 @@ public class Arm64ForceAcceptTests
         Assert.Throws<InvalidOperationException>(() => arm64.Restore(active, gamePaused: true));
     }
 
+    [Fact]
+    public void Measured_arm64_board_gates_are_replaced_by_nop_and_restored()
+    {
+        // Original branches read from the live Steam macOS 27.1.0+2505117 game: b.ne at the template verdict and
+        // b.mi at the club-vision check.
+        byte[] gate1 = [0xA1, 0x05, 0x00, 0x54], gate2 = [0xA4, 0x04, 0x00, 0x54], nop = [0x1F, 0x20, 0x03, 0xD5];
+        var json = JsonNode.Parse(File.ReadAllText(TestWorld.ProfilePath))!;
+        json["architecture"] = "arm64";
+        json["forceAccept"] = JsonNode.Parse("""
+            {"boardRequestsRva":"0x1000","boardRequestsOriginal":"A1 05 00 54",
+             "clubVisionRva":"0x1400","clubVisionOriginal":"A4 04 00 54"}
+            """);
+        var memory = new FakeMemory();
+        gate1.CopyTo(memory.Map(Module + 0x1000, 4), 0);
+        gate2.CopyTo(memory.Map(Module + 0x1400, 4), 0);
+        var planner = new ForceAcceptPlanner(OffsetProfile.Load(json.ToJsonString()), memory, Module);
+
+        var plan = planner.Plan(ForceAcceptPreset.BoardRequests);
+        Assert.Equal(ForceAcceptPlanState.Appliable, plan.State);
+        Assert.Equal(2, planner.Apply(plan, gamePaused: true));
+        var read = new byte[4];
+        memory.TryRead(Module + 0x1000, read); Assert.Equal(nop, read);
+        memory.TryRead(Module + 0x1400, read); Assert.Equal(nop, read);
+
+        var active = planner.Plan(ForceAcceptPreset.BoardRequests);
+        Assert.Equal(ForceAcceptPlanState.Active, active.State);
+        planner.Restore(active, gamePaused: true);
+        memory.TryRead(Module + 0x1000, read); Assert.Equal(gate1, read);
+        memory.TryRead(Module + 0x1400, read); Assert.Equal(gate2, read);
+    }
+
     sealed class NoAccessMemory : IProcessMemory
     {
         public bool TryRead(ulong address, Span<byte> buffer) =>

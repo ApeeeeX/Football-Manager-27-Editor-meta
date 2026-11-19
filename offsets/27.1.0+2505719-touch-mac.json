@@ -5,6 +5,12 @@
   "buildStringRva": "0x529A1E6",
   "matchBuild": "27.1.0\u002B2505719",
   "architecture": "arm64",
+  "forceAccept": {
+    "boardRequestsRva": "0x284B124",
+    "boardRequestsOriginal": "A1 05 00 54",
+    "clubVisionRva": "0x1B081F4",
+    "clubVisionOriginal": "A4 04 00 54"
+  },
   "imageSize": "0x5B6C000",
   "agreementRegionVtable": "0x582C5B8",
   "agreementVtable": "0x580CD88",

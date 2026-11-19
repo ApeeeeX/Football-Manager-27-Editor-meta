@@ -108,6 +108,8 @@ try
         "board" => BoardCommand(string.Join(' ', args[1..])),
         "allowhuman" => AllowHumanCommand(),
         "allowances" => AllowancesCommand(args[1..]),
+        "ptrdump" => AllowProbe.Run(Attach(writable: false), args[1..]),
+    "codepatch" => AllowProbe.Patch(Attach(writable: args.Length > 2), args[1..]),
         "allowat" => AllowAtCommand(Convert.ToUInt64(args[1].Replace("0x", ""), 16)),
         "nationtv" => NationTvCommand(args[1..]),
         "referees" => RefereesCommand(args.Length > 1 ? string.Join(' ', args[1..]) : null),
