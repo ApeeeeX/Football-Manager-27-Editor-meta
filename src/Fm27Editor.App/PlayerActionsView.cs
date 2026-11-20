@@ -503,6 +503,14 @@ public sealed partial class MainWindow
             var retirement = new PlannedRetirements(backend.Session.Memory, backend.Session.Profile, backend.Session.ModuleBase);
             if (retirement.IsSupported)
                 panel.Children.Add(ActionBtn("Prevent retirement", () => PreventRetirementNow(player)));
+            if (backend.Session.CanWrite && drafts.TryGetValue(player.Address, out var legendDraft))
+                AddLegendPreset(panel, player, legendDraft, ActionBtn);
+        }
+        if (isSquadMode && squadClub is { } matchClub && backend.Session.InMatch is not null)
+        {
+            var match = ActionBtn("In-Match Ability Modifier", () => _ = ShowInMatchAbilityAsync(matchClub), true);
+            ToolTip.SetTip(match, Loc.S("Edit attributes and condition for players in an active match."));
+            panel.Children.Add(match);
         }
         AddDevelopmentSpeed(panel, player, isSquadMode, getSelectedPlayers, onStatus, onApplied, ActionBtn);
 

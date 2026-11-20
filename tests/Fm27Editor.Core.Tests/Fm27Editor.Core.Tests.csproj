@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fm27Editor.Core\Fm27Editor.Core.csproj" />
+    <ProjectReference Include="..\..\src\Fm27Editor.Tools\Fm27Editor.Tools.csproj" />
   </ItemGroup>
 
 </Project>

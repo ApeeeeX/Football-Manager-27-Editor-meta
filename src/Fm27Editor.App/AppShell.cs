@@ -462,6 +462,9 @@ public sealed partial class MainWindow
         public ContentControl Header = null!;
         public ContentControl Rail = null!;
         public Border Button = null!;
+        public Button? Save;
+        public Func<bool>? InformationDirty;
+        public Func<bool>? SaveInformation;
     }
 
     readonly WrapPanel moduleBar = new() { Orientation = Orientation.Horizontal };
@@ -890,6 +893,9 @@ public sealed partial class MainWindow
     {
         selected = tab.Player;
         editor = tab.Panel;
+        saveButton = tab.Save;
+        informationDirty = tab.InformationDirty;
+        saveInformation = tab.SaveInformation;
         bodyHost.Content = tab.Root;
         activeEntityButton = tab.Button;
         HighlightEntityTab();
@@ -1474,7 +1480,7 @@ public sealed partial class MainWindow
     void SaveCurrentEntity()
     {
         Button? primary = null;
-        if (playerTabs.Any(t => ReferenceEquals(t.Root, bodyHost.Content))) primary = saveButton;
+        if (playerTabs.FirstOrDefault(t => ReferenceEquals(t.Root, bodyHost.Content)) is { } playerTab) primary = playerTab.Save;
         else if (bodyHost.Content is Control shownBody && screens.FirstOrDefault(s => s.OwnsBody(shownBody)) is { } screen) primary = screen.SaveButton;
 
         // The contract tab has no Save of its own: its edits are saved with the player's, by this one button.

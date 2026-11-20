@@ -347,6 +347,11 @@ public sealed partial class MainWindow
         }
         informationDirty = () => checks.Any(changed => changed());
         saveInformation = SaveInformation;
+        if (playerTabs.FirstOrDefault(t => ReferenceEquals(t.Panel, editor)) is { } tab)
+        {
+            tab.InformationDirty = informationDirty;
+            tab.SaveInformation = saveInformation;
+        }
         return panel;
     }
 }

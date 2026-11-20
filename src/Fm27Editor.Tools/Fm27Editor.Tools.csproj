@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Fm27Editor.Core.Tests" />
     <ProjectReference Include="..\Fm27Editor.Core\Fm27Editor.Core.csproj" />
   </ItemGroup>
 

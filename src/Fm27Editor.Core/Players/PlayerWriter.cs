@@ -10,6 +10,14 @@ namespace Fm27Editor.Core.Players;
 /// </summary>
 public sealed class PlayerWriter(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
 {
+    /// <summary>Validates a group of edits before committing. Keeps each field distinct in the undo journal.</summary>
+    public void ApplyBatch(Action<PlayerWriter> stage)
+    {
+        var batch = new MemoryWriteBatch(memory, coalesceAdjacentWrites: false);
+        stage(new PlayerWriter(batch, profile, moduleBase));
+        batch.Commit();
+    }
+
     public void SetAttribute(PlayerRecord player, PlayerAttribute attribute, int display)
     {
         RequireRange(display, 1, 20, attribute.ToString());

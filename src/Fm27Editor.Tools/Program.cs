@@ -16,6 +16,7 @@ using Fm27Editor.Core.Verification;
 
 // Football Manager 27 Editor command-line tools.
 //   players [name]                     list players (filtered by name)
+//   import-legends <FMCET.CT> <out.json> extract the historical player presets without executing Lua
 //   verify <golden.json>               compare decoded players with values copied from the game UI
 //   set <name> <field> <value>         write one attribute / CA / PA / position / personality value,
 //                                      Height (cm) or Born (yyyy-MM-dd)
@@ -49,6 +50,7 @@ try
         "golden" => GoldenCli.Run(args[1..], Attach),
         "academy-check" or "academy" => AcademyCheckCli.Run(args[1..], Attach),
         "players" => Players(args.Length > 1 ? string.Join(' ', args[1..]) : null),
+        "import-legends" => LegendImport.Run(args[1..]),
         "healthplayers" => HealthPlayers(),
         "healthstructure" => HealthStructure(),
         "healthstaff" => HealthStaff(),

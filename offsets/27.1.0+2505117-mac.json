@@ -9,6 +9,22 @@
   "gameUiLoadsOffset": "0x100",
   "retirementManagerRva": "0x57782B8",
   "retirementManagerVtable": "0x56C43F8",
+  "inMatch": {
+    "playerVtable": "0x576BBF0",
+    "dataVtable": "0x576B3E8",
+    "personVtable": "0x5656C00",
+    "playerStaffPersonVtable": "0x565CD60",
+    "data": "0x470",
+    "sourcePerson": "0x20",
+    "personUid": "0xC",
+    "fixture": "0x280",
+    "side": "0x288",
+    "positionBase": "0x478",
+    "attributeBase": "0x487",
+    "initialCondition": "0x120A",
+    "condition": "0x1220",
+    "morale": "0x1233"
+  },
   "playerList": {
     "rootRva": "0x57A2FC8",
     "beginOffset": "0x0",

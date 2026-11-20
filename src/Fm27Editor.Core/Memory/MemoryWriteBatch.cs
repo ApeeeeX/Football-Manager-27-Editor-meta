@@ -5,11 +5,12 @@ namespace Fm27Editor.Core.Memory;
 
 /// <summary>Stages a compound operation, including overlapping writes, then validates and commits it with rollback.
 /// Reads see staged writes. This is not a lock on the game's own threads.</summary>
-public sealed class MemoryWriteBatch(IProcessMemory memory) : IProcessMemory
+public sealed class MemoryWriteBatch(IProcessMemory memory, bool coalesceAdjacentWrites = true) : IProcessMemory
 {
     readonly Dictionary<ulong, byte> original = [];
     readonly Dictionary<ulong, byte> pending = [];
     readonly List<ulong> order = [];
+    readonly HashSet<ulong> writeStarts = [];
 
     public bool TryRead(ulong address, Span<byte> destination)
     {
@@ -30,6 +31,7 @@ public sealed class MemoryWriteBatch(IProcessMemory memory) : IProcessMemory
     {
         var before = new byte[data.Length];
         if (!TryRead(address, before)) return false;
+        if (!coalesceAdjacentWrites) writeStarts.Add(address);
         for (int i = 0; i < data.Length; i++)
         {
             ulong at = checked(address + (ulong)i);
@@ -47,7 +49,7 @@ public sealed class MemoryWriteBatch(IProcessMemory memory) : IProcessMemory
         {
             ulong start = order[i];
             int end = i + 1;
-            while (end < order.Count && order[end] == order[end - 1] + 1) end++;
+            while (end < order.Count && order[end] == order[end - 1] + 1 && !writeStarts.Contains(order[end])) end++;
             var addresses = order.GetRange(i, end - i);
             writes.Add(new(start, addresses.Select(a => original[a]).ToArray(), addresses.Select(a => pending[a]).ToArray(), "compound edit"));
             i = end;

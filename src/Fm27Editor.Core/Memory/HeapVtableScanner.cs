@@ -9,7 +9,14 @@ public readonly record struct HeapVtableMatch(ulong Address, ulong Vtable);
 /// <summary>One bounded, read-only heap pass for multiple object types. Results preserve region and word order.</summary>
 public static class HeapVtableScanner
 {
-    public static IReadOnlyList<HeapVtableMatch> Scan(IProcessMemory memory, params ulong[] vtables)
+    public static IReadOnlyList<HeapVtableMatch> Scan(IProcessMemory memory, params ulong[] vtables) =>
+        ScanCore(memory, vtables, tolerateUnreadable: false, CancellationToken.None);
+
+    /// <summary>Discovers candidates in a live heap where regions can disappear while being read.</summary>
+    internal static IReadOnlyList<HeapVtableMatch> ScanReadable(IProcessMemory memory, ulong vtable, CancellationToken ct) =>
+        ScanCore(memory, [vtable], tolerateUnreadable: true, ct);
+
+    static IReadOnlyList<HeapVtableMatch> ScanCore(IProcessMemory memory, ulong[] vtables, bool tolerateUnreadable, CancellationToken ct)
     {
         if (memory is not IMemoryRegions regions)
             throw new NotSupportedException("Heap discovery requires memory region enumeration");
@@ -24,7 +31,7 @@ public static class HeapVtableScanner
         {
             var buffer = new byte[1 << 22];
             int index;
-            while ((index = Interlocked.Increment(ref next)) < readable.Length)
+            while (!ct.IsCancellationRequested && (index = Interlocked.Increment(ref next)) < readable.Length)
             {
                 try { results[index] = ScanRegion(readable[index], buffer); }
                 catch (Exception ex) { errors[index] = ex; }
@@ -38,6 +45,7 @@ public static class HeapVtableScanner
             Task.WaitAll(workers);
         }
         else Worker();
+        ct.ThrowIfCancellationRequested();
         if (errors.FirstOrDefault(e => e is not null) is { } error) ExceptionDispatchInfo.Capture(error).Throw();
         return results.SelectMany(r => r).ToArray();
 
@@ -46,6 +54,7 @@ public static class HeapVtableScanner
             var found = new List<HeapVtableMatch>();
             for (ulong offset = 0; offset + 8 <= region.Size; offset += (ulong)buffer.Length)
             {
+                ct.ThrowIfCancellationRequested();
                 int length = (int)Math.Min((ulong)buffer.Length, region.Size - offset);
                 // A failed wide read is only a hint: retry bounded pages before declaring the index incomplete.
                 if (memory.TryRead(region.Start + offset, buffer.AsSpan(0, length)))
@@ -53,11 +62,15 @@ public static class HeapVtableScanner
                 else
                     for (int page = 0; page < length; page += 4096)
                     {
+                        ct.ThrowIfCancellationRequested();
                         int size = Math.Min(4096, length - page);
                         if (size < 8) continue;
                         var bytes = buffer.AsSpan(page, size);
                         if (!memory.TryRead(region.Start + offset + (ulong)page, bytes))
+                        {
+                            if (tolerateUnreadable) continue;
                             throw new MemoryAccessException($"Heap index is incomplete: writable range 0x{region.Start + offset + (ulong)page:X} ({size} bytes) could not be read");
+                        }
                         Match(region.Start + offset + (ulong)page, bytes, found);
                     }
             }

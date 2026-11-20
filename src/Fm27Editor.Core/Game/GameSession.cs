@@ -24,6 +24,8 @@ public sealed class GameSession : IDisposable
 
     public PlayerRepository Players { get; }
     public PlayerWriter Writer { get; }
+    public InMatchAbility? InMatch => CanWrite && Profile.InMatch is not null && _memory is IMemoryRegions
+        ? new(_memory, Profile, ModuleBase) : null;
     public ContractWriter Contracts { get; }
     public Transfer.TransferService Transfers { get; }
 

@@ -11,6 +11,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Fm27Editor.Core.History;
 using Fm27Editor.Core.Offsets;
 using Fm27Editor.Core.Players;
 using Fm27Editor.Core.Settings;
@@ -1267,6 +1268,12 @@ public sealed partial class MainWindow : Window
         informationDirty = null;
         saveInformation = null;
         if (selected is not { } player) return;
+        var playerTab = playerTabs.FirstOrDefault(t => ReferenceEquals(t.Panel, editor));
+        if (playerTab is not null)
+        {
+            playerTab.InformationDirty = null;
+            playerTab.SaveInformation = null;
+        }
         if (!drafts.TryGetValue(player.Address, out var draft)) drafts[player.Address] = draft = new PlayerDraft(player);
 
         var commands = new StackPanel
@@ -1384,11 +1391,11 @@ public sealed partial class MainWindow : Window
         commands.Children.Insert(0, new FavoriteStar(player.Id));
         var portrait = graphics.Image("person", player.Id, 72);
         var identityHeader = UiKit.EntityBanner(player.DisplayName, badges, commands.Children.Count > 0 ? commands : null, portrait);
-        var playerTab = playerTabs.FirstOrDefault(t => ReferenceEquals(t.Panel, editor));
         if (playerTab is not null)
         {
             playerTab.Player = player;
             playerTab.Header.Content = identityHeader;
+            playerTab.Save = saveButton;
         }
         else editor.Children.Add(identityHeader);
 
@@ -1910,15 +1917,17 @@ public sealed partial class MainWindow : Window
             }
             playerScalarDrafts.Remove(player.Address);
         }
+        string? legendName = drafts.GetValueOrDefault(player.Address)?.Legend?.Name;
         if (!SaveDraft()) return;
-        if (backend.Players.Reload(player.Address) is { } fresh)
+        if (legendName is null && backend.Players.Reload(player.Address) is { } fresh)
         {
             fresh.GameDate = backend.GameDate;
             selected = fresh;
             ReplaceRow(fresh);
         }
         RenderEditor();
-        status.Text = Loc.S("Changes saved. Continue in FM to see updates.");
+        status.Text = legendName is null ? Loc.S("Changes saved. Continue in FM to see updates.")
+            : Loc.F("Applied {0}. Continue in FM to see updates.", legendName);
     }
 
     bool SaveDraft()
@@ -1928,7 +1937,17 @@ public sealed partial class MainWindow : Window
         var count = draft.Count;
         try
         {
-            selected = draft.Save(backend.Edits);
+            if (draft.Legend is not null)
+            {
+                var session = backend.Session;
+                backend.Edits.Execute("Player", selected.DisplayName, "Legend Players",
+                    () => draft.SaveLegend(session.Writer), PlayerChangeLabels.For(session.Profile, address, draft.Original.VtableRva));
+                var fresh = backend.Players.Reload(address) ?? throw new StaleObjectException("Player no longer exists");
+                foreach (var attribute in Enum.GetValues<PlayerAttribute>())
+                    if (fresh.Raw(attribute) != draft.Original.Raw(attribute)) backend.AcceptFrozenEdit(fresh, attribute.ToString());
+                selected = fresh;
+            }
+            else selected = draft.Save(backend.Edits);
             selected.GameDate = backend.GameDate;
             drafts.Remove(address);
             ReplaceRow(selected);

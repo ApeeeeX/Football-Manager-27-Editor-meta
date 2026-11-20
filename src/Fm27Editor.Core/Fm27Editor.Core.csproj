@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Fm27Editor.Core.Tests" />
+    <EmbeddedResource Include="Players\Legends.json" LogicalName="Fm27Editor.Players.Legends.json" />
     <EmbeddedResource Include="..\..\offsets\*.json" LogicalName="offsets/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\offsets\layouts\*.json" LogicalName="offsets/layouts/%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\offsets\fixtures\*.json" LogicalName="offsets/fixtures/%(Filename)%(Extension)" />

@@ -101,6 +101,7 @@ public sealed class OffsetProfile
     public uint? AgreementVtable { get; init; }
     /// <summary>Profile <c>forceAccept</c>: RVAs of the code sites the force-accept presets patch, null when this build was not measured.</summary>
     public ForceAccept.ForceAcceptOffsets? ForceAccept { get; init; }
+    public InMatchOffsets? InMatch { get; init; }
     /// <summary>Player values beyond attributes (profile <c>player.fields</c>, paths from the player object).</summary>
     public IReadOnlyDictionary<Players.PlayerField, Clubs.ClubFieldOffset>? PlayerFields { get; init; }
     public InjuryOffsets? Injuries { get; init; }
@@ -202,6 +203,11 @@ public sealed class OffsetProfile
                 ContractOffersRva = fa.TryGetProperty("contractOffersRva", out _) ? (uint)Hex(fa, "contractOffersRva") : null,
                 TransferOffersRva = fa.TryGetProperty("transferOffersRva", out _) ? (uint)Hex(fa, "transferOffersRva") : null,
             } : null,
+            InMatch = root.TryGetProperty("inMatch", out var im) ? new InMatchOffsets(
+                (uint)Hex(im, "playerVtable"), (uint)Hex(im, "dataVtable"), (uint)Hex(im, "personVtable"),
+                (uint)Hex(im, "playerStaffPersonVtable"), Hex(im, "data"), Hex(im, "sourcePerson"), Hex(im, "personUid"),
+                Hex(im, "fixture"), Hex(im, "side"), Hex(im, "positionBase"), Hex(im, "attributeBase"),
+                Hex(im, "initialCondition"), Hex(im, "condition"), im.TryGetProperty("morale", out _) ? Hex(im, "morale") : null) : null,
             PlayerListRootRva = (uint)Hex(list, "rootRva"),
             PlayerListBeginOffset = Hex(list, "beginOffset"),
             PlayerListEndOffset = Hex(list, "endOffset"),
@@ -562,6 +568,18 @@ public sealed class OffsetProfile
             {
                 w.WriteStartObject("globalArrays");
                 H("clubsSlotRva", globalArrays.ClubsSlotRva);
+                w.WriteEndObject();
+            }
+            if (InMatch is { } match)
+            {
+                w.WriteStartObject("inMatch");
+                H("playerVtable", match.PlayerVtable); H("dataVtable", match.DataVtable);
+                H("personVtable", match.PersonVtable); H("playerStaffPersonVtable", match.PlayerStaffPersonVtable);
+                H("data", match.Data); H("sourcePerson", match.SourcePerson); H("personUid", match.PersonUid);
+                H("fixture", match.Fixture); H("side", match.Side);
+                H("positionBase", match.PositionBase); H("attributeBase", match.AttributeBase);
+                H("initialCondition", match.InitialCondition); H("condition", match.Condition);
+                if (match.Morale is { } morale) H("morale", morale);
                 w.WriteEndObject();
             }
             w.WriteStartObject("playerList");

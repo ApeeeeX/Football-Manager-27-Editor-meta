@@ -9,7 +9,7 @@ public static class PlayerChangeLabels
     /// Labeler for the player object at <paramref name="player"/>: attributes (shown on the 1–20 scale), personality,
     /// positions, ability, reputation, height and date of birth. Other bytes are left unnamed.
     /// </summary>
-    public static Func<ulong, int, ChangeLabel?> For(OffsetProfile profile, ulong player)
+    public static Func<ulong, int, ChangeLabel?> For(OffsetProfile profile, ulong player, uint? vtable = null)
     {
         var byOffset = new Dictionary<int, ChangeLabel>();
         foreach (var (attribute, offset) in profile.Attributes) byOffset[offset] = new(Words(attribute.ToString()), Math.Max(1, profile.AttributeScale));
@@ -23,8 +23,9 @@ public static class PlayerChangeLabels
         byOffset[f.WorldReputation] = new("World Reputation");
         byOffset[f.Height] = new("Height");
         byOffset[f.DateOfBirth] = new("Date of Birth");
-        return (address, length) => address >= player && address - player < (ulong)profile.PlayerObjectSize
-            && byOffset.TryGetValue((int)(address - player), out var label) ? label : null;
+        var labels = byOffset.ToDictionary(
+            pair => player + (ulong)(vtable is { } rva ? profile.PlayerOffset(rva, pair.Key) : pair.Key), pair => pair.Value);
+        return (address, length) => labels.GetValueOrDefault(address);
     }
 
     /// <summary>"FirstTouch" → "First Touch".</summary>
