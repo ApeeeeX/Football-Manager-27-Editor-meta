@@ -93,6 +93,25 @@ public class StaffTests
         Assert.Throws<StaleObjectException>(() => w.SetAttribute(s, StaffAttribute.CoachingAttacking, 5));
     }
 
+    [Fact]
+    public void Backroom_recruitment_preset_raises_scouting_fields_and_refuses_when_the_job_has_changed()
+    {
+        var repo = Repo();
+        var person = Assert.Single(repo.LoadAll());
+        var writer = new StaffWriter(_w.Memory, _w.Profile, TestWorld.ModuleBase);
+        var club = new ClubInfo(0x9000, "Man Utd", "Man Utd");
+        var scout = person with { Club = club, JobCode = 14 };
+        var plan = BackroomTeam.Plan([scout], club.Address, BackroomDepartment.Recruitment, writer);
+        Assert.Empty(plan.Skipped);
+        Assert.Equal(3, plan.Changes.Count);
+        var ability = Assert.Single(plan.Changes, change => change.Field == StaffAttribute.JudgingPlayerAbility);
+        Assert.Equal((18, 20, 90, 100), (ability.Before, ability.After, (int)ability.BeforeRaw, (int)ability.AfterRaw));
+        Assert.Contains(plan.Changes, change => change.Field == StaffAttribute.TacticalKnowledge && change.Before == 13 && change.After == 18);
+        Assert.Empty(BackroomTeam.Plan([scout], club.Address, BackroomDepartment.Medical, writer).Changes);
+        Assert.Empty(BackroomTeam.Plan([scout], 0xA000, null, writer).Changes);
+        Assert.Throws<StaleObjectException>(() => BackroomTeam.Apply(ability, repo, writer));
+    }
+
     /// <summary>
     /// Human manager: 0x580-byte object, staff part (vtable 0x4CC086C) 0x440 below the person part (vtable 0x4CC08D8).
     /// Bytes are Duong Vu's as dumped; expected values are FMRTE 27's page for him (ID 2002081897, born 20/8/2004,

@@ -7,7 +7,8 @@ namespace Fm27Editor.Core.History;
 /// <param name="Parts">A write that stores several equal-size numbers in one go (CA then PA, the three reputations) is shown as "a / b / c".</param>
 /// <param name="Kind">How the stored bytes read: a number, a float, a game date (day-of-year in the low 9 bits, then the year) or a colour.</param>
 /// <param name="PartNames">Names of the parts of one multi-value write (Rating, Min Age...); only the parts that changed are shown.</param>
-public sealed record ChangeLabel(string Name, int Divisor = 1, int Parts = 1, ChangeValueKind Kind = ChangeValueKind.Number, string[]? PartNames = null);
+public sealed record ChangeLabel(string Name, int Divisor = 1, int Parts = 1, ChangeValueKind Kind = ChangeValueKind.Number,
+    string[]? PartNames = null, Action<IProcessMemory>? ValidateUndo = null);
 
 /// <remarks><see cref="Flags"/>: one byte of checkboxes; <c>PartNames[bit]</c> names each bit and the entry shows the boxes that changed ("Is Covered on").</remarks>
 public enum ChangeValueKind { Number, Float, Date, Colour, Signed, Flags }
@@ -219,6 +220,7 @@ public sealed class ChangeJournal
             {
                 MemoryWriteBatch.Run(memory, staged =>
                 {
+                    entry.Label?.ValidateUndo?.Invoke(staged);
                     if (!staged.Read(entry.Address, entry.After.Length).AsSpan().SequenceEqual(entry.After))
                         throw new Players.StaleObjectException("The value changed since this edit");
                     if (!staged.TryWrite(entry.Address, entry.Before)) throw new MemoryAccessException("Could not undo the edit");
@@ -248,6 +250,7 @@ public sealed class ChangeJournal
                 {
                     foreach (var entry in entries)
                     {
+                        entry.Label?.ValidateUndo?.Invoke(staged);
                         if (!staged.Read(entry.Address, entry.After.Length).AsSpan().SequenceEqual(entry.After))
                             throw new Players.StaleObjectException("The value changed since this edit");
                         if (!staged.TryWrite(entry.Address, entry.Before)) throw new MemoryAccessException("Could not undo the edit");

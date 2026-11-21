@@ -194,6 +194,7 @@ internal class ClubScreen(IScreenHost host, IClubPanels panels)
 
     protected override ClubEntry RecordOf(MainWindow.ClubPickerItem row) => row.Club;
     protected override ulong AddressOf(ClubEntry record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(ClubEntry record) => EntityTabIdentity.Database(record.Id);
     protected override string NameOf(ClubEntry record) => record.DisplayName;
     protected override ClubDraft NewDraft() => throw new InvalidOperationException("A club draft needs its club");
     protected override ClubDraft NewDraftFor(ClubEntry record) => new(record.Address);

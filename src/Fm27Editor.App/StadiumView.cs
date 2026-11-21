@@ -68,6 +68,7 @@ internal sealed class StadiumScreen(IScreenHost host)
 
     protected override StadiumRecord RecordOf(StadiumRow row) => row.Stadium;
     protected override ulong AddressOf(StadiumRecord record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(StadiumRecord record) => EntityTabIdentity.Database(record.Id);
     protected override string NameOf(StadiumRecord record) => record.Name ?? record.Address.ToString("X");
     protected override Func<ulong, int, Fm27Editor.Core.History.ChangeLabel?>? LabelsOf(StadiumRecord record) =>
         Fm27Editor.Core.History.EntityChangeLabels.ForStadium(Host.Backend.Session.Memory, Host.Backend.Session.Profile, record.Address);

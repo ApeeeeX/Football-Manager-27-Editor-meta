@@ -116,15 +116,26 @@ internal static class ToolGrid
     /// leaves only that row ticked; Ctrl+click ticks or unticks that row alone. <paramref name="excluded"/> holds the keys of the
     /// unticked rows; <paramref name="changed"/> runs after any change.
     /// </summary>
-    public static void AddTick<T>(DataGrid grid, HashSet<ulong> excluded, Func<T, ulong> key, Func<IEnumerable<T>> rows, Action changed) where T : class
+    public static Action AddTick<T>(DataGrid grid, HashSet<ulong> excluded, Func<T, ulong> key, Func<IEnumerable<T>> rows, Action changed) where T : class
     {
         var syncs = new List<Action>();
-        void Changed() { foreach (var sync in syncs.ToArray()) sync(); changed(); }
-
         var all = new CheckBox { IsChecked = true, MinWidth = 0, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0) };
+        bool syncingHeader = false;
+        void Changed()
+        {
+            foreach (var sync in syncs.ToArray()) sync();
+            var keys = rows().Select(key).ToArray();
+            int selected = keys.Count(id => !excluded.Contains(id));
+            syncingHeader = true;
+            all.IsEnabled = keys.Length > 0;
+            all.IsChecked = selected == 0 ? false : selected == keys.Length ? true : null;
+            syncingHeader = false;
+            changed();
+        }
         ToolTip.SetTip(all, Loc.S("Include every row"));
         all.IsCheckedChanged += (_, _) =>
         {
+            if (syncingHeader) return;
             if (all.IsChecked == true) excluded.Clear();
             else foreach (var r in rows()) excluded.Add(key(r));
             Changed();
@@ -180,6 +191,7 @@ internal static class ToolGrid
             foreach (var r in rows()) if (!selected.Contains(key(r))) excluded.Add(key(r));
             Changed();
         };
+        return Changed;
     }
 
     /// <summary>

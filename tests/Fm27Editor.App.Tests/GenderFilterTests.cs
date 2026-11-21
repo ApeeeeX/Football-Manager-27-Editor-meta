@@ -29,7 +29,7 @@ public sealed class GenderFilterTests
         public object? SelectedNav => null;
         public event EventHandler? NavChanged { add { } remove { } }
         public bool IsShowing(Control body) => false;
-        public void OpenTab(string kind, ulong address, string title, Control body, Action restore) { }
+        public void OpenTab(string kind, EntityTabIdentity identity, EntityTabContent content) { }
         public void SwitchModule(string title) { }
         public IReadOnlyList<NationRecord> NationCatalogue => [];
         public Task OpenNationAsync(ulong address) => Task.CompletedTask;

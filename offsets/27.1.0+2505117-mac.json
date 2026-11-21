@@ -452,6 +452,14 @@
     "ageLimit": "0x2C"
   },
   "club": {
+    "projects": {
+      "stadiumPlans": "0x28",
+      "stadiumPlanExpiry": "0x38",
+      "managerRoot": "0x5785440",
+      "managerVtable": "0x56C2070",
+      "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8" },
+      "upgrades": { "vector": "0x20", "club": "0x8", "date": "0x10", "vtable": "0x566A870" }
+    },
     "listRootRva": "0x57A3180",
     "vtable": "0x56693C8",
     "name": "0xC0",
@@ -1078,6 +1086,17 @@
     }
   },
   "competition": {
+    "fixtures": {
+      "vtable": "0x573F350", "nameVtable": "0x5677DF0",
+      "home": "0x8", "away": "0x10", "name": "0x20",
+      "competition": "0x18", "season": "0x30", "date": "0x4C"
+    },
+    "clubSwap": {
+      "teamStadium": "0x78", "fixtureStadium": "0x28",
+      "secondaryStandings": "0x140", "standingTeam": "0x88", "standingName": "0x78",
+      "teamSeasonState": "0xA0", "competitions": "0x50", "participationStride": "0x18",
+      "participationStats": "0x8", "statsVtable": "0x566B460", "statsTeam": "0x18"
+    },
     "squadRulesRuntime": {
       "holder": "0xB0",
       "holderVtable": "0x5738948",
@@ -1176,6 +1195,11 @@
     "snapshotSize": "0x148"
   },
   "staff": {
+    "managerUnlockables": {
+      "flags": "0x3FC",
+      "allPlayersInterested": "0x1",
+      "becomeUnsackable": "0x2"
+    },
     "allowances": {
       "teamManager": "0x80",
       "humanMscc": "0x388",

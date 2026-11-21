@@ -4,6 +4,33 @@ public static partial class Loc
 {
     static partial void RegisterEntities(Dictionary<string, string> m)
     {
+        m["Build a Backroom Team"] = "Nâng cấp đội ngũ hỗ trợ";
+        m["All departments"] = "Tất cả bộ phận";
+        m["Recruitment"] = "Tuyển trạch";
+        m["Medical"] = "Y tế";
+        m["New stadium"] = "Sân vận động mới";
+        m["Planning · Expires {0}"] = "Đang lập kế hoạch · Hồ sơ hết hạn {0}";
+        m["Planning · Expiry date unknown"] = "Đang lập kế hoạch · Chưa rõ hạn hồ sơ";
+        m["Club projects"] = "Dự án CLB";
+        m["Swap Clubs"] = "Đổi hạng đấu giữa hai CLB";
+        m["Preview Club Swap"] = "Xem trước hoán đổi";
+        m["Choose the other club"] = "Chọn CLB còn lại";
+        m["Checking both league schedules…"] = "Đang kiểm tra lịch hai hạng đấu…";
+        m["{0} affected matches · Read-only preview"] = "{0} trận bị ảnh hưởng · Chỉ xem trước";
+        m["{0} affected league matches"] = "{0} trận tại hai giải sẽ đổi đội";
+        m["Clubs swapped across {0} league matches"] = "Đã đổi hạng đấu và cập nhật {0} trận";
+        m["Due today"] = "Đến hạn hôm nay";
+        m["Due {0}"] = "Đến hạn {0}";
+        m["Finish today"] = "Hoàn thành hôm nay";
+        m["Finish all today"] = "Hoàn thành tất cả hôm nay";
+        m["No club projects"] = "Không có dự án CLB";
+        m["Project completion dates moved to today. Continue in FM to see updates."] = "Đã chuyển hạn hoàn thành về hôm nay. Chọn Continue trong FM để xem cập nhật.";
+        m["Loading club projects…"] = "Đang tải dự án CLB…";
+        m["Project"] = "Dự án";
+        m["Finish Club Projects"] = "Hoàn thành dự án CLB";
+        m["Stadium expansion"] = "Mở rộng sân vận động";
+        m["Facility upgrade"] = "Nâng cấp cơ sở vật chất";
+        m["Scheduled completion"] = "Ngày dự kiến hoàn thành";
         m["Qualify For Competition"] = "Giành quyền tham dự giải đấu";
         m["Work within wage budget"] = "Tuân thủ ngân sách lương";
         m["Sign players to sell for a profit"] = "Chiêu mộ cầu thủ để bán kiếm lời";
@@ -206,19 +233,12 @@ public static partial class Loc
         m["Unambitious"] = "Thiếu tham vọng";
         m["Unsporting"] = "Thiếu tinh thần thể thao";
         m["Very Ambitious"] = "Rất tham vọng";
-        m["Force Accept Transfer (Experimental)"] = "Buộc chấp nhận chuyển nhượng (thử nghiệm)";
-        m["Force Accept Transfer is not verified for this game architecture"] = "Chưa xác minh ép chấp nhận chuyển nhượng trên kiến trúc game này";
         m["Checking…"] = "Đang kiểm tra…";
-        m["Force Accept Transfer enabled."] = "Đã bật ép chấp nhận chuyển nhượng.";
-        m["Force Accept Transfer turned off."] = "Đã tắt ép chấp nhận chuyển nhượng.";
-        m["Force Accept Transfer removed."] = "Đã gỡ ép chấp nhận chuyển nhượng.";
-        m["No managed club found in the loaded save."] = "Không tìm thấy CLB do người chơi quản lý trong save.";
-        m["Clubs accept transfer offers made by the club you manage. Works while active without affecting offers made by AI clubs."] = "Buộc CLB đối tác chấp nhận đề nghị của CLB bạn quản lý khi bật. Không áp dụng cho đề nghị của CLB AI.";
-        m["Not installed · no managed club found"] = "Chưa cài · không tìm thấy CLB người chơi";
-        m["Not installed · managed clubs: {0}"] = "Chưa cài · CLB người chơi: {0}";
-        m["{0} · offers seen {1} · accepted {2} · clubs: {3}"] = "{0} · đã xét {1} đề nghị · chấp nhận {2} · CLB: {3}";
+        m["Force Board Request"] = "Buộc duyệt yêu cầu ban lãnh đạo";
+        m["The board accepts every board request and Club Vision change you submit while this is turned on."] = "Khi bật, ban lãnh đạo chấp nhận mọi yêu cầu và thay đổi tầm nhìn CLB mà bạn gửi.";
+        m["Unavailable · unexpected code bytes"] = "Không khả dụng · Mã game đã thay đổi";
+        m["The board request hook changed. Try again."] = "Trạng thái yêu cầu ban lãnh đạo đã thay đổi. Hãy thử lại.";
         m["club {0}"] = "CLB {0}";
-        m["This hook is verified only for x64 Windows game builds; it is disabled on this architecture."] = "Móc này chỉ được xác minh trên bản game Windows x64; đã tắt trên kiến trúc hiện tại.";
         m["Choose role catalog…"] = "Chọn bộ dữ liệu vai trò…";
         m["Choose an IP/OOP role catalog to show ratings."] = "Chọn bộ dữ liệu vai trò có bóng/không bóng để xem điểm.";
         m["Role catalog: {0}"] = "Bộ dữ liệu vai trò: {0}";

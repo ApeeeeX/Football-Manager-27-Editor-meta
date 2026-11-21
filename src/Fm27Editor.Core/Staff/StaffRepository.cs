@@ -4,6 +4,8 @@ using Fm27Editor.Core.Players;
 
 namespace Fm27Editor.Core.Staff;
 
+public sealed record ManagerUnlockableState(uint Raw, bool AllPlayersInterested, bool BecomeUnsackable);
+
 /// <summary>One staff member as read. Attributes are display values 1–20, indexed by <see cref="StaffAttribute"/>.</summary>
 public sealed record StaffRecord
 {
@@ -39,6 +41,7 @@ public sealed record StaffRecord
     public required StaffKind Kind { get; init; }
     /// <summary>Human managers only (1–100, indexed by <see cref="ManagerAttribute"/>); null for other staff.</summary>
     public byte[]? ManagerAttributes { get; init; }
+    public ManagerUnlockableState? ManagerUnlockables { get; init; }
 
     public int Attribute(StaffAttribute a) => Attributes[(int)a];
     /// <summary>Null when this build or staff kind has no measured offset.</summary>
@@ -139,6 +142,7 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
             s.HomeReputation + 2, s.CurrentReputation + 2, s.WorldReputation + 2, s.CurrentAbility + 2, s.PotentialAbility + 2,
             s.Attributes.Values.Max(a => a.Offset) + 1,
             kind.Manager && s.ManagerAttributes.Count > 0 ? s.ManagerAttributes.Values.Max() + 1 : 0,
+            kind.Manager && s.ManagerUnlockables is { } unlockables ? unlockables.Flags + sizeof(uint) : 0,
         }.Max();
         var st = new byte[Math.Max(staffEnd, StaffReadSize)];
         if (!memory.TryRead(staff, st) || BitConverter.ToUInt64(st) != moduleBase + kind.StaffVtableRva) return null;
@@ -157,6 +161,12 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
         byte[]? manager = kind.Manager
             ? Enum.GetValues<ManagerAttribute>().Select(a => s.ManagerAttributes.TryGetValue(a, out int o) && o < st.Length ? st[o] : (byte)0).ToArray()
             : null;
+        ManagerUnlockableState? unlockableState = null;
+        if (kind.Manager && s.ManagerUnlockables is { } layout)
+        {
+            uint raw = BitConverter.ToUInt32(st, layout.Flags);
+            unlockableState = new(raw, (raw & layout.AllPlayersInterested) != 0, (raw & layout.BecomeUnsackable) != 0);
+        }
 
         var attrs = new byte[Enum.GetValues<StaffAttribute>().Length];
         foreach (var (a, (off, scaled)) in s.Attributes)
@@ -218,6 +228,7 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
             Personality = p[s.Personality..(s.Personality + 8)],
             Kind = kind,
             ManagerAttributes = manager,
+            ManagerUnlockables = unlockableState,
             Caps = details is null ? null : BitConverter.ToInt16(extra, details.Caps),
             Goals = details is null ? null : BitConverter.ToInt16(extra, details.Goals),
             License = details is null ? null : (StaffLicense)(sbyte)extra[details.License],
@@ -323,6 +334,19 @@ public sealed class StaffWriter(IProcessMemory memory, OffsetProfile profile, ul
             throw new InvalidOperationException($"{staff.DisplayName} is not a human manager");
         if (value is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(value), "Manager attributes are 1–100");
         Write(staff, staff.StaffAddress + (ulong)off, [current[(int)attribute]], [(byte)value]);
+    }
+
+    public void SetManagerUnlockables(StaffRecord staff, bool? allPlayersInterested, bool? becomeUnsackable)
+    {
+        if (!staff.Kind.Manager || staff.ManagerUnlockables is not { } snapshot || S.ManagerUnlockables is not { } layout)
+            throw new InvalidOperationException("Manager unlockables are unavailable for this staff member");
+        uint after = snapshot.Raw;
+        if (allPlayersInterested is { } interested) after = SetFlag(after, layout.AllPlayersInterested, interested);
+        if (becomeUnsackable is { } unsackable) after = SetFlag(after, layout.BecomeUnsackable, unsackable);
+        if (after != snapshot.Raw)
+            Write(staff, staff.StaffAddress + (ulong)layout.Flags, BitConverter.GetBytes(snapshot.Raw), BitConverter.GetBytes(after));
+
+        static uint SetFlag(uint flags, uint mask, bool enabled) => enabled ? flags | mask : flags & ~mask;
     }
 
     StaffPersonDetails Details(StaffRecord staff) =>

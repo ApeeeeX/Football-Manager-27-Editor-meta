@@ -15,6 +15,8 @@ public static class StaffChangeLabels
         if (staff.Kind.Manager)
             foreach (var (attribute, offset) in s.ManagerAttributes)
                 map[staff.StaffAddress + (ulong)offset] = new(PlayerChangeLabels.Words(attribute.ToString()));
+        if (staff.ManagerUnlockables is not null && s.ManagerUnlockables is { } unlockables)
+            map[staff.StaffAddress + (ulong)unlockables.Flags] = new("Manager Unlockables");
         foreach (var trait in Enum.GetValues<StaffPersonality>())
             map[staff.Address + (ulong)(s.Personality + (int)trait)] = new(PlayerChangeLabels.Words(trait.ToString()));
         map[staff.StaffAddress + (ulong)s.CurrentAbility] = new("Current / Potential Ability", 1, 2);

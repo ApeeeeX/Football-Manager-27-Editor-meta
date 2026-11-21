@@ -66,7 +66,7 @@ internal sealed class MassEditReviewWindow : Window
         Opened += (_, _) => { Visit(); Refresh(); };
     }
 
-    static string ScopeNoun(string scope) => Loc.S(scope switch { "Player" => "players", "Coach" => "coaches", "Club" => "clubs", _ => "nations" });
+    static string ScopeNoun(string scope) => Loc.S(scope switch { "Player" => "players", "Coach" => "coaches", "Staff" => "staff", "Club" => "clubs", _ => "nations" });
 
     Page BuildPage(MassPlan plan)
     {

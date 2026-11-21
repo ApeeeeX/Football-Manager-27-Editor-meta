@@ -134,6 +134,30 @@ public sealed class BulkPlayerActionsTests
     }
 
     [Fact]
+    public void Tick_header_tracks_teams_selected_by_buttons_and_toggles_all_rows()
+    {
+        AvaloniaTestThread.Run(() =>
+        {
+            PlayerRecord[] rows = [Player(0x1000, "Home"), Player(0x2000, "Away")];
+            var grid = ToolGrid.Create();
+            var excluded = rows.Select(row => row.Address).ToHashSet();
+            var sync = ToolGrid.AddTick(grid, excluded, (PlayerRecord row) => row.Address, () => rows, () => { });
+            var header = Assert.IsType<CheckBox>(grid.Columns[0].Header);
+
+            sync();
+            Assert.False(header.IsChecked);
+            excluded.Remove(rows[0].Address);
+            sync();
+            Assert.Null(header.IsChecked);
+            Assert.Equal(new[] { rows[1].Address }, excluded);
+            header.IsChecked = true;
+            Assert.Empty(excluded);
+            header.IsChecked = false;
+            Assert.Equal(rows.Select(row => row.Address), excluded.Order());
+        });
+    }
+
+    [Fact]
     public void ToolGrid_drag_selects_range_even_when_pointer_is_captured_by_start_row_and_syncs_ticks()
     {
         AvaloniaTestThread.Run(() =>

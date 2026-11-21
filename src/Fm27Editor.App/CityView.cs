@@ -36,6 +36,7 @@ internal sealed class CityScreen(IScreenHost host)
 
     protected override CityRecord RecordOf(CityRow row) => row.City;
     protected override ulong AddressOf(CityRecord record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(CityRecord record) => EntityTabIdentity.Database(record.Id);
     protected override string NameOf(CityRecord record) => record.Name;
     protected override Func<ulong, int, Fm27Editor.Core.History.ChangeLabel?>? LabelsOf(CityRecord record) =>
         Fm27Editor.Core.History.EntityChangeLabels.ForCity(Host.Backend.Session.Profile, record.Address);

@@ -129,16 +129,12 @@ public sealed partial class MainWindow : Window
     /// <summary>The toolbar's retirement and future-transfer lists, each opened as its own tab (as FMRTE does).</summary>
     void ShowRetirementsTab()
     {
-        retiringView ??= BuildRetiringView();
-        OpenKindTab("list", 1, Loc.S("Retire Date"), retiringView, ShowLoadedRetirements);
-        ShowLoadedRetirements();
+        ShowListTab(1);
     }
 
     void ShowFutureTransfersTab()
     {
-        futureView ??= BuildFutureTransfersView();
-        OpenKindTab("list", 2, Loc.S("Future Transfers"), futureView, ShowLoadedFutureTransfers);
-        ShowLoadedFutureTransfers();
+        ShowListTab(2);
     }
 
     StackPanel editor = new() { Spacing = 12, Margin = new Thickness(18, 14) };
@@ -294,6 +290,7 @@ public sealed partial class MainWindow : Window
             SectionHost.Release(this);
             timer.Stop();
             saveWatcher.Stop();
+            ClearEntityTabDrag();
             CloseUnified();
             lastUnifiedResults.Clear();
             HideLoading();
@@ -926,6 +923,7 @@ public sealed partial class MainWindow : Window
                     await LoadAsync(data);
                     await PrepareLoadedGameAsync(data, report);
                     await FinishReloadAsync(report);
+                    RebindEntityTabs(report);
                     if (staleOverlay is not null) staleOverlay.IsVisible = false;
                     loaded = true;
                 }
@@ -941,6 +939,8 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            if (!loaded && activeEntityButton is not null)
+                ShowUnavailableEntityTab(Loc.S("Load Game to refresh this tab."));
             HideLoading();
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
             FlightRecorder.Current?.Log("load", $"{(loaded && report.Succeeded ? "ready" : "incomplete")}: {elapsed.ElapsedMilliseconds} ms; errors {report.Errors.Count}");
@@ -984,7 +984,12 @@ public sealed partial class MainWindow : Window
 
             PopulateFilterDropdowns();
             await FilterInternal(reportStatus: true, immediate: true);
-            RebindPlayerTabs();
+            if (data is null)
+            {
+                RebindPlayerTabs();
+                if (playerTabs.FirstOrDefault(tab => tab.Button == activeEntityButton) is { } active)
+                    ActivatePlayerTab(active);
+            }
             UpdateConnectionBadge();
             if (rows.Count == 0) status.Text = Loc.S("0 players");
             FlightRecorder.Current?.Log("game", $"loaded {rows.Count} {module.Title} rows in {elapsed.ElapsedMilliseconds} ms");
@@ -1503,14 +1508,11 @@ public sealed partial class MainWindow : Window
     internal static TextBox RatingBox(int value, int min, int max, Action<int> commit, Func<int>? current = null)
     {
         int last = value;
-        var rating = new TextBox
-        {
-            Text = value.ToString(Inv), Width = 28, MinWidth = 0, MaxWidth = 28, Height = 20, MinHeight = 20,
-            HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(2, 0),
-            FontSize = 13, FontWeight = FontWeight.Bold,
-            HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
-            Background = RatingBg(value), BorderBrush = RatingBorder(value), Foreground = RatingColor(value),
-        };
+        var rating = CreateRatingInput();
+        rating.Text = value.ToString(Inv);
+        rating.Foreground = RatingColor(value);
+        rating.Background = RatingBg(value);
+        rating.BorderBrush = RatingBorder(value);
         if (current is not null) rating.GotFocus += (_, _) => last = current();
         rating.LostFocus += (_, _) =>
         {
@@ -1531,6 +1533,14 @@ public sealed partial class MainWindow : Window
         };
         return rating;
     }
+
+    static TextBox CreateRatingInput() => new()
+    {
+        Width = 28, MinWidth = 0, MaxWidth = 28, Height = 20, MinHeight = 20,
+        HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(2, 0),
+        FontSize = 13, FontWeight = FontWeight.Bold,
+        HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
+    };
 
     static readonly PlayerPosition[] DefensivePositions = PitchLayout.DefensivePositions;
     static readonly PlayerPosition[] AttackingPositions = PitchLayout.AttackingPositions;

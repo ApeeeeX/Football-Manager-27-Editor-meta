@@ -579,8 +579,7 @@ public sealed partial class MainWindow
             "Add a player with Set speed in his Actions panel. Works until you close the game.")));
         stack.Children.Add(accelPanel);
         stack.Children.Add(accelHits);
-        stack.Children.Add(BuildForceBoardRequestSection(session));
-        stack.Children.Add(BuildForceAcceptTransferSection(session));
+        stack.Children.Add(BuildClubBoardRequestsCard(session));
         window = new Window
         {
             Title = Loc.S("Hook Manager"),

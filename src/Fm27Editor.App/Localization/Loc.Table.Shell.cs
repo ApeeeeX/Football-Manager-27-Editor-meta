@@ -276,6 +276,10 @@ public static partial class Loc
 
         m["The game has no save loaded"] = "Game chưa tải file save nào";
         m["A save was loaded in the game"] = "Một file save đã được tải trong game";
+        m["Load Game to refresh this tab."] = "Bấm Load Game để tải lại tab này.";
+        m["This item is unavailable in the loaded save."] = "Mục này không có trong save đang mở.";
+        m["Move tab left"] = "Chuyển tab sang trái";
+        m["Move tab right"] = "Chuyển tab sang phải";
         m["A different save was loaded in the game"] = "Một file save khác đã được tải trong game";
         m["Press Load Game to read the new save"] = "Nhấn Tải dữ liệu Game để đọc file save mới";
         m["No save is loaded in the game yet"] = "Chưa có file save nào được tải trong game";

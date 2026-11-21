@@ -34,6 +34,7 @@ internal sealed class AwardScreen(IScreenHost host)
 
     protected override AwardRecord RecordOf(AwardRow row) => row.Award;
     protected override ulong AddressOf(AwardRecord record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(AwardRecord record) => EntityTabIdentity.Database(record.Id);
     protected override string NameOf(AwardRecord record) => record.DisplayName;
     protected override Func<ulong, int, Fm27Editor.Core.History.ChangeLabel?>? LabelsOf(AwardRecord record) =>
         Fm27Editor.Core.History.EntityChangeLabels.ForAward(Host.Backend.Session.Profile, record.Address);

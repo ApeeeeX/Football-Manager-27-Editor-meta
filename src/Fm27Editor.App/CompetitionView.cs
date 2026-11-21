@@ -195,6 +195,7 @@ internal sealed class CompetitionScreen(IScreenHost host)
 
     protected override CompetitionRecord RecordOf(CompetitionRow row) => row.Competition;
     protected override ulong AddressOf(CompetitionRecord record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(CompetitionRecord record) => EntityTabIdentity.Database(record.Id);
     protected override string NameOf(CompetitionRecord record) => record.DisplayName;
     protected override CompetitionState NewDraft() => new();
     protected override bool HasChanges(CompetitionRecord record, CompetitionState state) => state.Draft.Any;

@@ -135,7 +135,18 @@ static class UiKit
         return row;
     }
 
-    public static Border Card(string title, Control body, Control? customTitle = null, Control? rightHeader = null)
+    public static Grid ActionRow(Control summary, Control? action)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12, Children = { summary } };
+        if (action is not null)
+        {
+            Grid.SetColumn(action, 1);
+            row.Children.Add(action);
+        }
+        return row;
+    }
+
+    public static Border Card(string title, Control body, Control? customTitle = null, Control? rightHeader = null, bool fill = false)
     {
         var headerDock = new DockPanel { LastChildFill = true };
         if (rightHeader is not null)
@@ -185,9 +196,10 @@ static class UiKit
             Child = headerDock,
         };
 
-        var stack = new StackPanel { Spacing = 0 };
-        stack.Children.Add(header);
-        stack.Children.Add(body);
+        Panel layout = fill ? new DockPanel() : new StackPanel();
+        DockPanel.SetDock(header, Dock.Top);
+        layout.Children.Add(header);
+        layout.Children.Add(body);
 
         return new Border
         {
@@ -197,7 +209,7 @@ static class UiKit
             CornerRadius = new CornerRadius(4),
             ClipToBounds = true,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Child = stack,
+            Child = layout,
         };
     }
 

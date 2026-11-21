@@ -50,7 +50,7 @@ public sealed partial class MainWindow : IScreenHost
     }
 
     bool IScreenHost.IsShowing(Control body) => ReferenceEquals(bodyHost.Content, body);
-    void IScreenHost.OpenTab(string kind, ulong address, string title, Control body, Action restore) => OpenKindTab(kind, address, title, body, restore);
+    void IScreenHost.OpenTab(string kind, EntityTabIdentity identity, EntityTabContent content) => OpenKindTab(kind, identity, content);
     void IScreenHost.SwitchModule(string title) => SwitchModule(title);
 
     IReadOnlyList<NationRecord> IScreenHost.NationCatalogue =>

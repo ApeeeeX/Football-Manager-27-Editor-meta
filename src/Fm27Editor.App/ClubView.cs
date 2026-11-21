@@ -208,7 +208,10 @@ public sealed partial class MainWindow : IClubPanels
     void IClubPanels.Reconnected()
     {
         youthIntakeDrafts.Clear();
+        selectedKitTab.Clear();
         kitDrafts.Clear();
+        clubFamiliarityDrafts.Clear();
+        pendingAffiliationRemovals.Clear();
         clubSelectedTeam.Clear();
         visionCompetitionNames = visionNationNames = visionContinentNames = null;
         clubListSelectedRow.Clear();
@@ -623,6 +626,10 @@ public sealed partial class MainWindow : IClubPanels
                 ordered.Add((BuildClubStaffAllowancesCard(club, allowanceSnapshot), 7));
             }
             ordered.Add((BuildClubBoardRequestsCard(backend.Session), 3));
+            if (new ClubProjects(backend.Session.Memory, backend.Session.Profile, backend.Session.ModuleBase).IsSupported)
+                ordered.Add((BuildClubProjectsCard(backend.Session, club), 2));
+            if (backend.Session.Profile.Competition?.Fixtures is not null && club.FirstTeam is not null)
+                ordered.Add((BuildClubSwapPreviewCard(backend.Session, club), 2));
             AddGroup("Facilities");
             AddGroup("Teams");
             foreach (var g in groups)
@@ -1013,7 +1020,7 @@ public sealed partial class MainWindow : IClubPanels
             clubEditorPanel.Children.Add(new Border
             {
                 Margin = new Thickness(12, 0, 0, 0),
-                Child = BuildStaffTable(staffLines, clubScope, RenderClubEditor),
+                Child = BuildStaffTable(staffLines, clubScope, RenderClubEditor, club.Address),
             });
             return;
         }        var provider = GameSessionClubListProvider.Default;

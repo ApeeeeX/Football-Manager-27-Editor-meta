@@ -26,7 +26,7 @@ internal interface IScreenHost
     event EventHandler NavChanged;
     bool IsShowing(Control body);
     /// <summary>Opens (or re-activates) the entity's tab; <paramref name="restore"/> runs when the tab is clicked again.</summary>
-    void OpenTab(string kind, ulong address, string title, Control body, Action restore);
+    void OpenTab(string kind, EntityTabIdentity identity, EntityTabContent content);
     void SwitchModule(string title);
     IReadOnlyList<NationRecord> NationCatalogue { get; }
     Task OpenNationAsync(ulong address);
@@ -56,6 +56,7 @@ internal interface IEntityScreen : IRegisterable
 {
     string Kind { get; }
     void ResetForConnection();
+    EntityTabContent? FindTab(EntityTabIdentity identity);
     Task PreloadAsync(LoadedGameData data);
     int RowCount { get; }
     bool IsLoaded { get; }
@@ -133,6 +134,7 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
     protected abstract bool Matches(TRow row, string foldedQuery);
     protected abstract TRecord RecordOf(TRow row);
     protected abstract ulong AddressOf(TRecord record);
+    protected virtual EntityTabIdentity IdentityOf(TRecord record) => default;
     /// <summary>The name the tab, the status line and the edit history use.</summary>
     protected abstract string NameOf(TRecord record);
     protected abstract TDraft NewDraft();
@@ -147,7 +149,7 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
     protected abstract string? Validate(TRecord record, TDraft draft, out Func<int> write);
     /// <summary>Runs after a successful save, to drop state the draft does not hold.</summary>
     protected virtual void Saved(TRecord record) { }
-    /// <summary>Runs when the game connection changes, after the open items and drafts were dropped.</summary>
+    /// <summary>Runs when the game connection changes, after the old data and drafts were dropped.</summary>
     protected virtual void OnReconnected() { }
     /// <summary>Runs on the window thread before rows load in the background, to collect what the load needs from the window.</summary>
     protected virtual void BeforeLoad() { }
@@ -395,7 +397,7 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
     // Opening one item.
     void OpenSelected()
     {
-        if (Selected is not { } record) return;
+        if (Host.IsLoading || Host.Backend.SaveChanged || Selected is not { } record) return;
         Render();
         OpenTab(record);
     }
@@ -403,6 +405,7 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
     /// <summary>Shows <paramref name="record"/> from anywhere (a link in another screen, the global search).</summary>
     public void Pick(TRecord record)
     {
+        if (Host.IsLoading || Host.Backend.SaveChanged) return;
         Host.SwitchModule(nav.Title);
         Selected = record;
         Render();
@@ -416,16 +419,21 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
             Dispatcher.UIThread.Post(async () =>
             {
                 if (!loadAttempted && !Host.IsLoading) await LoadAsync();
-                if (Selected is { } open && AddressOf(open) == address) Render();
+                if (!Host.IsLoading && !Host.Backend.SaveChanged && Selected is { } open && AddressOf(open) == address) Render();
             });
         }
     }
 
     void OpenTab(TRecord record)
     {
-        var shown = record;
-        Host.OpenTab(Kind, AddressOf(record), NameOf(record), detailRoot, () => { Selected = shown; Render(); });
+        Host.OpenTab(Kind, IdentityOf(record), TabContent(record));
     }
+
+    public EntityTabContent? FindTab(EntityTabIdentity identity) =>
+        identity.Find(Rows.Select(RecordOf), IdentityOf, AddressOf) is { } record ? TabContent(record) : null;
+
+    EntityTabContent TabContent(TRecord record) =>
+        new(AddressOf(record), NameOf(record), detailRoot, () => { Selected = record; Render(); });
 
     // The editor.
     protected void Render()

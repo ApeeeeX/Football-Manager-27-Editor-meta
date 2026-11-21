@@ -57,7 +57,7 @@ public sealed partial class MainWindow
     /// The Staff table shared by clubs and nations: the squad table's look (tick column, header sorting) and a Tools card whose
     /// Renew / Make it expire / −1 / +1 Year act on the ticked rows and only on the contract <paramref name="scope"/> names.
     /// </summary>
-    Control BuildStaffTable(IReadOnlyList<StaffListRow> source, IStaffContractScope scope, Action refresh)
+    Control BuildStaffTable(IReadOnlyList<StaffListRow> source, IStaffContractScope scope, Action refresh, ulong? club = null)
     {
         var rows = source.ToList();
         // The ticks survive a Renew/Expire (which redraws the table), so a chosen row stays the chosen row.
@@ -93,10 +93,13 @@ public sealed partial class MainWindow
         };
 
         var count = new TextBlock { FontSize = 12, Foreground = UiKit.Brush("#94A3B8"), Margin = new Thickness(1, 0, 0, 4) };
+        var backroom = new Button { Content = Loc.S("Build a Backroom Team"), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
+        StaffRecord[] Chosen() => rows.Where(r => !excluded.Contains(r.Staff.Address)).Select(r => r.Staff).ToArray();
         updateCount = () =>
         {
             int included = rows.Count(r => !excluded.Contains(r.Staff.Address));
             count.Text = included == 1 ? Loc.S("( 1 Staff )") : Loc.F("( {0} Staff )", included);
+            if (club.HasValue) backroom.IsEnabled = Chosen().Any(staff => BackroomTeam.DepartmentOf(staff).HasValue);
         };
         updateCount();
 
@@ -143,6 +146,11 @@ public sealed partial class MainWindow
             Spacing = 8, Margin = new Thickness(8, 8),
             Children = { count, Tool("Renew for 4 Years", "Renew for 4 Years", (s, today) => scope.Renew(s, 4, today)), Tool("Make it expire", "Make it expire", (s, today) => scope.Expire(s, today)), pair },
         };
+        if (club is { } clubAddress)
+        {
+            backroom.Click += async (_, _) => await ShowBackroomTeamAsync(clubAddress, Chosen(), refresh);
+            tools.Children.Insert(1, backroom);
+        }
         var card = UiKit.Card("Tools", tools);
         card.Width = 196;
         card.VerticalAlignment = VerticalAlignment.Top;

@@ -30,6 +30,7 @@ public sealed class InMatchFixture
 internal sealed record InMatchCopy(ulong Address, ulong Source, ulong Fixture, ulong Side, ulong PersonVtable, PlayerRecord Player);
 
 public sealed record InMatchChanges(bool MaxPerformance, IReadOnlyDictionary<PlayerAttribute, int> Attributes, int? ConditionPercent, int? Morale = null);
+public sealed record InMatchPlayerValues(IReadOnlyDictionary<PlayerAttribute, int> Attributes, int? ConditionPercent, int? Morale);
 public readonly record struct InMatchResult(int PlayersChanged, int CopiesChanged);
 
 /// <summary>Edits the simulation's temporary player data through the verified profile. No edit targets a permanent player object.</summary>
@@ -40,6 +41,33 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
     readonly int firstPosition = profile.Positions.Values.Min();
 
     public bool CanSetMorale => offsets.Morale is not null;
+    public IEnumerable<PlayerAttribute> Attributes => profile.Attributes.Keys;
+
+    public IReadOnlyDictionary<int, InMatchPlayerValues> ReadPlayers(InMatchFixture fixture, CancellationToken ct = default)
+    {
+        var values = new Dictionary<int, InMatchPlayerValues>();
+        byte[] attributes = new byte[profile.Attributes.Values.Max() - firstAttribute + 1];
+        byte[] condition = new byte[2], morale = new byte[1];
+        foreach (var copy in fixture.Copies)
+        {
+            ct.ThrowIfCancellationRequested();
+            int uid = copy.Player.Id!.Value;
+            if (values.ContainsKey(uid)) continue;
+            try
+            {
+                ValidateCopy(memory, copy, uid);
+                if (!memory.TryRead(At(copy, offsets.AttributeBase), attributes)) continue;
+                int? fitness = memory.TryRead(At(copy, offsets.Condition), condition)
+                    ? BinaryPrimitives.ReadUInt16LittleEndian(condition) / 100 : null;
+                int? spirit = offsets.Morale is { } at && memory.TryRead(At(copy, at), morale) ? (sbyte)morale[0] : null;
+                values.Add(uid, new(profile.Attributes.ToDictionary(pair => pair.Key,
+                    pair => AttributeScaling.ToDisplay(attributes[pair.Value - firstAttribute], profile.AttributeScale)), fitness, spirit));
+            }
+            catch (MemoryAccessException) { }
+            catch (StaleObjectException) { }
+        }
+        return values;
+    }
 
     public IReadOnlyList<InMatchFixture> FindFixtures(IReadOnlyList<PlayerRecord> players, CancellationToken ct = default)
     {
@@ -146,14 +174,7 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
             foreach (var copy in fixture.Copies.Where(c => playerIds.Contains(c.Player.Id!.Value)))
             {
                 int uid = copy.Player.Id!.Value;
-                if (staged.ReadUInt64(copy.Address) != moduleBase + offsets.PlayerVtable ||
-                    staged.ReadUInt64(At(copy, offsets.Data)) != moduleBase + offsets.DataVtable ||
-                    staged.ReadUInt64(At(copy, offsets.SourcePerson)) != copy.Source ||
-                    staged.ReadUInt64(At(copy, offsets.Fixture)) != copy.Fixture ||
-                    staged.ReadUInt64(At(copy, offsets.Side)) != copy.Side ||
-                    staged.ReadUInt64(copy.Source) != copy.PersonVtable ||
-                    BinaryPrimitives.ReadInt32LittleEndian(staged.Read(copy.Source + (ulong)offsets.PersonUid, sizeof(int))) != uid)
-                    throw new StaleObjectException("The match roster changed. Scan for matches again.");
+                ValidateCopy(staged, copy, uid);
                 if (positionOffset is { } at && staged.Read(At(copy, at), 1)[0] < minimumFamiliarity) continue;
 
                 bool changed = false;
@@ -184,6 +205,18 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
             }
         });
         return new(touched.Count, copies);
+    }
+
+    void ValidateCopy(IProcessMemory source, InMatchCopy copy, int uid)
+    {
+        if (source.ReadUInt64(copy.Address) != moduleBase + offsets.PlayerVtable ||
+            source.ReadUInt64(At(copy, offsets.Data)) != moduleBase + offsets.DataVtable ||
+            source.ReadUInt64(At(copy, offsets.SourcePerson)) != copy.Source ||
+            source.ReadUInt64(At(copy, offsets.Fixture)) != copy.Fixture ||
+            source.ReadUInt64(At(copy, offsets.Side)) != copy.Side ||
+            source.ReadUInt64(copy.Source) != copy.PersonVtable ||
+            BinaryPrimitives.ReadInt32LittleEndian(source.Read(copy.Source + (ulong)offsets.PersonUid, sizeof(int))) != uid)
+            throw new StaleObjectException("The match roster changed. Scan for matches again.");
     }
 
     static bool Stage(IProcessMemory staged, ulong address, byte[] before, byte[] next)

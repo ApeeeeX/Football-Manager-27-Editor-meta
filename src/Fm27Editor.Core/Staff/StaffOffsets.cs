@@ -54,6 +54,8 @@ public sealed class StaffOffsets
     public int? ContractRollingMask { get; init; }
     /// <summary>Extra staff allowances on the human manager's <c>Mscc</c> record; null when not measured for this build.</summary>
     public StaffAllowanceOffsets? Allowances { get; init; }
+    /// <summary>Flag word on a human manager, measured per build.</summary>
+    public StaffUnlockableOffsets? ManagerUnlockables { get; init; }
     /// <summary>Staff-part byte offset per attribute and whether it is stored ×5 (most) or as 1–20.</summary>
     public required IReadOnlyDictionary<StaffAttribute, (int Offset, bool Scaled)> Attributes { get; init; }
 
@@ -106,6 +108,9 @@ public sealed class StaffOffsets
                 al.TryGetProperty("teamManager", out _) ? Hex(al, "teamManager") : 0x80,
                 Hex(al, "humanMscc"),
                 Hex(al, "msccExtraStaff")) : null,
+            ManagerUnlockables = e.TryGetProperty("managerUnlockables", out var unlockables) ? new StaffUnlockableOffsets(
+                Hex(unlockables, "flags"), (uint)Hex(unlockables, "allPlayersInterested"),
+                (uint)Hex(unlockables, "becomeUnsackable")) : null,
         };
     }
 
@@ -125,6 +130,14 @@ public sealed class StaffOffsets
             H("teamManager", al.TeamManager);
             H("humanMscc", al.HumanMscc);
             H("msccExtraStaff", al.MsccExtraStaff);
+            w.WriteEndObject();
+        }
+        if (ManagerUnlockables is { } unlockables)
+        {
+            w.WriteStartObject("managerUnlockables");
+            H("flags", unlockables.Flags);
+            H("allPlayersInterested", unlockables.AllPlayersInterested);
+            H("becomeUnsackable", unlockables.BecomeUnsackable);
             w.WriteEndObject();
         }
         if (KnowledgeHolder is { } kh) H("knowledgeHolder", kh);
@@ -179,6 +192,8 @@ public sealed record StaffPersonDetails(uint PersonVtableRva, int Caps, int Goal
 /// <c>Mscc</c> of the 21-byte extra-staff block.
 /// </summary>
 public sealed record StaffAllowanceOffsets(int TeamManager, int HumanMscc, int MsccExtraStaff);
+
+public sealed record StaffUnlockableOffsets(int Flags, uint AllPlayersInterested, uint BecomeUnsackable);
 
 /// <summary>Coaching licence codes, from FMRTE 27 writing each choice in turn on Paolo Orlandoni (Steam 27.0.1, 12/11/2026).</summary>
 public enum StaffLicense : sbyte

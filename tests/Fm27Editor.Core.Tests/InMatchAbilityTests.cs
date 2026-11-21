@@ -74,6 +74,36 @@ public class InMatchAbilityTests
     }
 
     [Theory]
+    [InlineData(false, 1, 5)]
+    [InlineData(false, 12, 60)]
+    [InlineData(true, 16, 80)]
+    [InlineData(true, 20, 100)]
+    public void Reads_live_values_and_applies_exact_ratings_to_selected_players_from_both_teams(bool touch, int rating, byte expectedRaw)
+    {
+        var (editor, players, copies, permanent) = BuildFixture(touch);
+        var match = Assert.Single(editor.FindFixtures(players));
+        var initial = editor.ReadPlayers(match);
+        Assert.Equal(17, initial[1].Attributes[PlayerAttribute.Dribbling]);
+        Assert.Equal(75, initial[1].ConditionPercent);
+        Assert.Equal(12, initial[1].Morale);
+
+        var ratings = editor.Attributes.ToDictionary(attribute => attribute, _ => rating);
+        var unchanged = copies[0, 10].ToArray();
+        var permanentPlayer = permanent[1].ToArray();
+        var selected = new HashSet<int> { 1, 9 };
+        var applied = editor.Apply(match, selected, new(false, ratings, 100, 20));
+
+        Assert.Equal(new InMatchResult(2, 4), applied);
+        Assert.Equal(expectedRaw, copies[0, 1][Dribbling]);
+        Assert.Equal(expectedRaw, copies[1, 9][Crossing]);
+        Assert.Equal(expectedRaw, copies[1, 9][InjuryProneness]);
+        Assert.Equal(10000, ReadCondition(copies[0, 9], Condition));
+        Assert.Equal(20, copies[0, 9][Morale]);
+        Assert.Equal(unchanged, copies[0, 10]);
+        Assert.Equal(permanentPlayer, permanent[1]);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Match_offsets_round_trip_through_the_profile(bool touch)

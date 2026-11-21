@@ -43,6 +43,7 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
     : EntityScreen<StaffRecord, StaffRow, StaffDraft>(host, "staff", "Staff", "staff", "Search staff name or ID...")
 {
     const string AllClubs = "All clubs", AllJobs = "All jobs";
+    const string InterestedUnlockable = "unlock:All Players Interested", UnsackableUnlockable = "unlock:Become Unsackable";
 
     /// <summary>Freeze / Unfreeze for every staff member selected in the list, as one history entry.</summary>
     protected override IEnumerable<(string Label, Action<IReadOnlyList<StaffRecord>> Run)> ContextActions()
@@ -219,10 +220,16 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
 
     protected override StaffRecord RecordOf(StaffRow row) => row.Staff;
     protected override ulong AddressOf(StaffRecord record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(StaffRecord record) => EntityTabIdentity.Person(record.Id, record.FullName ?? record.DisplayName, record.DateOfBirth);
     protected override string NameOf(StaffRecord record) => record.DisplayName;
     protected override StaffDraft NewDraft() => new();
     protected override bool HasChanges(StaffRecord record, StaffDraft draft) => draft.Changes.Count > 0;
-    protected override StaffRecord? Reload(StaffRecord record) => Host.Backend.Session.Staff.Reload(record.Address);
+    protected override StaffRecord? Reload(StaffRecord record)
+    {
+        var session = Host.Backend.Session;
+        ulong address = record.Kind.Manager && session.Profile.Staff?.DirectStaffVector == true ? record.StaffAddress : record.Address;
+        return session.Staff.Reload(address) is { } fresh && fresh.Id == record.Id ? fresh : null;
+    }
     protected override StaffRow Refresh(StaffRow row, StaffRecord fresh) =>
         row with { Staff = fresh, CA = fresh.CurrentAbility, PA = fresh.PotentialAbility, Club = fresh.Club?.DisplayName ?? "", Job = StaffLabels.Job(fresh.JobCode) };
 
@@ -233,12 +240,15 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
         write = () => 0;
         if (!draft.TryParse(out var v, out var error)) return error;
         var w = Host.Backend.Session.StaffWriter;
+        bool? interested = v.TryGetValue(InterestedUnlockable, out int interestFlag) ? interestFlag == 1 : null;
+        bool? unsackable = v.TryGetValue(UnsackableUnlockable, out int unsackableFlag) ? unsackableFlag == 1 : null;
         write = () =>
         {
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("attr:", StringComparison.Ordinal)))
                 { var attribute = Enum.Parse<StaffAttribute>(key[5..]); w.SetAttribute(s, attribute, value); if (Host.Backend.Session.Staff.Reload(s.Address) is { } written) Host.Backend.AcceptFrozenStaffEdit(written, attribute); }
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("mgr:", StringComparison.Ordinal)))
                 w.SetManagerAttribute(s, Enum.Parse<ManagerAttribute>(key[4..]), value);
+            if (interested.HasValue || unsackable.HasValue) w.SetManagerUnlockables(s, interested, unsackable);
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("pers:", StringComparison.Ordinal)))
                 w.SetPersonality(s, Enum.Parse<StaffPersonality>(key[5..]), value);
             if (v.TryGetValue("caps", out int caps)) w.SetCaps(s, caps);
@@ -450,6 +460,28 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
         if (s.ManagerAttributes is { } mgr)
             col[0].Children.Add(UiKit.Card("Manager", Rows(StaffLabels.Manager
                 .Select(m => (m.Label, (Control)Box($"mgr:{m.Attribute}", mgr[(int)m.Attribute].ToString(Inv), 42))))));
+        if (s.ManagerUnlockables is { } flags)
+        {
+            Control Flag(string key, bool original, string tooltip)
+            {
+                string label = key[(key.IndexOf(':') + 1)..];
+                var check = new CheckBox { IsChecked = draft.Changes.GetValueOrDefault(key, original ? "1" : "0") == "1", MinWidth = 0 };
+                Avalonia.Automation.AutomationProperties.SetName(check, Loc.S(label));
+                ToolTip.SetTip(check, Loc.S(tooltip));
+                check.IsCheckedChanged += (_, _) =>
+                {
+                    bool enabled = check.IsChecked == true;
+                    if (enabled == original) draft.Changes.Remove(key);
+                    else draft.Changes[key] = enabled ? "1" : "0";
+                    changed();
+                };
+                return check;
+            }
+            col[0].Children.Add(UiKit.Card("Manager Unlockables (Experimental)", Rows([
+                ("All Players Interested", Flag(InterestedUnlockable, flags.AllPlayersInterested, "Makes players interested in joining this manager's club.")),
+                ("Become Unsackable", Flag(UnsackableUnlockable, flags.BecomeUnsackable, "Prevents this manager from being sacked.")),
+            ])));
+        }
         col[0].Children.Add(UiKit.Card("Personality", Rows(Enum.GetValues<StaffPersonality>()
             .Select(t => (t.ToString(), (Control)Box($"pers:{t}", s.Personality[(int)t].ToString(Inv)))))));
 

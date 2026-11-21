@@ -101,6 +101,7 @@ public sealed class ClubOffsets
     public required int Name { get; init; }
     public required int ShortName { get; init; }
     public ClubFinanceOffsets? Finance { get; init; }
+    public Clubs.ClubProjectOffsets? Projects { get; init; }
     /// <summary>int32 club ID as the game UI shows it (Man Utd 680, PSG 868).</summary>
     public int? Id { get; init; }
     /// <summary>Nation* FMRTE shows as the club's Nation (Man Utd and Swansea: England; Swansea's +0xE8 is Wales).</summary>
@@ -237,6 +238,8 @@ public sealed class NationOffsets
 public sealed class CompetitionOffsets
 {
     public required int TeamCompetition { get; init; }
+    public Competitions.LeagueFixtureOffsets? Fixtures { get; init; }
+    public Competitions.ClubSwapOffsets? ClubSwap { get; init; }
     public required uint VtableRva { get; init; }
     public required int Name { get; init; }
     public required int ShortName { get; init; }

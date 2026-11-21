@@ -110,6 +110,7 @@ internal sealed class NationScreen(IScreenHost host)
 
     protected override NationRecord RecordOf(NationRow row) => row.Nation;
     protected override ulong AddressOf(NationRecord record) => record.Address;
+    protected override EntityTabIdentity IdentityOf(NationRecord record) => EntityTabIdentity.Database(record.Id);
     protected override string NameOf(NationRecord record) => record.DisplayName;
 
     protected override Func<ulong, int, Fm27Editor.Core.History.ChangeLabel?>? LabelsOf(NationRecord record) =>

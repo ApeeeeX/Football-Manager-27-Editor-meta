@@ -13,6 +13,9 @@ public enum CompetitionStandingField { Played, Won, Drawn, Lost, GoalsFor, Goals
 /// <summary>Read the standings vector measured in a one-stage league. Other layouts return null.</summary>
 public sealed class CompetitionStandingsAccess(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
 {
+    internal const int TableOffset = 0xC0;
+    internal const int PlayedOffset = 0xF, PointsOffset = 0xC;
+
     public void SetPoints(CompetitionRecord competition, CompetitionStanding snapshot, short value) =>
         Set(competition, snapshot, CompetitionStandingField.Points, value);
 
@@ -30,10 +33,10 @@ public sealed class CompetitionStandingsAccess(IProcessMemory memory, OffsetProf
             throw new ArgumentOutOfRangeException(nameof(value));
         int offset = field switch
         {
-            CompetitionStandingField.Played => 0xF, CompetitionStandingField.Won => 0x10,
+            CompetitionStandingField.Played => PlayedOffset, CompetitionStandingField.Won => 0x10,
             CompetitionStandingField.Drawn => 0x11, CompetitionStandingField.Lost => 0x12,
             CompetitionStandingField.GoalsFor => 0x8, CompetitionStandingField.GoalsAgainst => 0xA,
-            CompetitionStandingField.Points => 0xC, _ => throw new ArgumentOutOfRangeException(nameof(field)),
+            CompetitionStandingField.Points => PointsOffset, _ => throw new ArgumentOutOfRangeException(nameof(field)),
         };
         var rows = Read(competition);
         if (rows is null || snapshot.Position < 1 || snapshot.Position > rows.Count)
@@ -59,7 +62,7 @@ public sealed class CompetitionStandingsAccess(IProcessMemory memory, OffsetProf
             // This validates competition, holder, single stage, ownership and vtables.
             var prize = new CompetitionPrizeMoneyAccess(memory, profile, moduleBase).Read(competition);
             if (prize is null) return null;
-            ulong begin = memory.ReadUInt64(prize.Stage + 0xC0), end = memory.ReadUInt64(prize.Stage + 0xC8);
+            ulong begin = memory.ReadUInt64(prize.Stage + TableOffset), end = memory.ReadUInt64(prize.Stage + TableOffset + 8);
             if (begin == 0 && end == 0) return [];
             if (begin == 0 || end < begin || (end - begin) % 8 != 0 || end - begin > 2048) return null;
             var rows = new List<CompetitionStanding>();

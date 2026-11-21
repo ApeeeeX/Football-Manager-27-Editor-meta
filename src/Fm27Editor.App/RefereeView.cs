@@ -35,6 +35,7 @@ internal sealed class RefereeScreen(IScreenHost host)
     protected override bool Matches(RefereeRow row, string q) => Fold(row.Name).Contains(q, StringComparison.Ordinal) || row.Id.ToString(Inv).Contains(q, StringComparison.Ordinal);
     protected override RefereeRecord RecordOf(RefereeRow row) => row.Referee;
     protected override ulong AddressOf(RefereeRecord r) => r.Address;
+    protected override EntityTabIdentity IdentityOf(RefereeRecord r) => EntityTabIdentity.Database(r.UniqueId);
     protected override string NameOf(RefereeRecord r) => r.DisplayName;
     protected override Func<ulong, int, ChangeLabel?>? LabelsOf(RefereeRecord r) => EntityChangeLabels.ForReferee(r.Address, Host.Backend.Session.Profile.Officials);
     protected override Dictionary<RefereeField, string> NewDraft() => [];

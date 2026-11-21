@@ -308,6 +308,10 @@ public sealed class OffsetProfile
                 Lists = k.TryGetProperty("lists", out var lists) ? ClubListOffsets.Load(lists) : null,
                 FinanceLists = k.TryGetProperty("financeLists", out var financeLists) ? ClubFinanceListOffsets.Load(financeLists) : null,
                 Relationships = k.TryGetProperty("relationships", out var clubRel) ? ClubRelationshipOffsets.Load(clubRel) : null,
+                Projects = k.TryGetProperty("projects", out var projects) ? new Clubs.ClubProjectOffsets(
+                    (uint)Hex(projects, "managerRoot"), (uint)Hex(projects, "managerVtable"),
+                    ReadClubProjectQueue(projects.GetProperty("expansions")), ReadClubProjectQueue(projects.GetProperty("upgrades")),
+                    OptHex(projects, "stadiumPlans"), OptHex(projects, "stadiumPlanExpiry")) : null,
                 ClubVtableRva = (uint)Hex(k, "vtable"),
                 Name = Hex(k, "name"),
                 ShortName = Hex(k, "shortName"),
@@ -375,6 +379,15 @@ public sealed class OffsetProfile
             Competition = root.TryGetProperty("competition", out var comp) ? new CompetitionOffsets
             {
                 TeamCompetition = Hex(comp, "teamCompetition"),
+                Fixtures = comp.TryGetProperty("fixtures", out var fixtures) ? new Competitions.LeagueFixtureOffsets(
+                    (uint)Hex(fixtures, "vtable"), (uint)Hex(fixtures, "nameVtable"),
+                    Hex(fixtures, "home"), Hex(fixtures, "away"), Hex(fixtures, "name"), Hex(fixtures, "competition"),
+                    Hex(fixtures, "season"), Hex(fixtures, "date")) : null,
+                ClubSwap = comp.TryGetProperty("clubSwap", out var swap) ? new Competitions.ClubSwapOffsets(
+                    Hex(swap, "teamStadium"), Hex(swap, "fixtureStadium"), Hex(swap, "secondaryStandings"),
+                    Hex(swap, "standingTeam"), Hex(swap, "standingName"), Hex(swap, "teamSeasonState"),
+                    Hex(swap, "competitions"), Hex(swap, "participationStride"), Hex(swap, "participationStats"),
+                    (uint)Hex(swap, "statsVtable"), Hex(swap, "statsTeam")) : null,
                 VtableRva = (uint)Hex(comp, "vtable"),
                 Name = Hex(comp, "name"),
                 ShortName = Hex(comp, "shortName"),
@@ -687,6 +700,25 @@ public sealed class OffsetProfile
                 k.Lists?.Write(w);
                 k.FinanceLists?.Write(w);
                 k.Relationships?.Write(w);
+                if (k.Projects is { } projects)
+                {
+                    w.WriteStartObject("projects");
+                    H("managerRoot", projects.ManagerRoot); H("managerVtable", projects.ManagerVtable);
+                    if (projects.StadiumPlans is { } plans) H("stadiumPlans", plans);
+                    if (projects.StadiumPlanExpiry is { } expiry) H("stadiumPlanExpiry", expiry);
+                    WriteQueue("expansions", projects.Expansions);
+                    WriteQueue("upgrades", projects.Upgrades);
+                    w.WriteEndObject();
+
+                    void WriteQueue(string name, Clubs.ClubProjectQueueOffsets queue)
+                    {
+                        w.WriteStartObject(name);
+                        H("vector", queue.Vector); H("club", queue.Club); H("date", queue.Date);
+                        if (queue.Stadium is { } stadium) H("stadium", stadium);
+                        if (queue.Vtable is { } vtable) H("vtable", vtable);
+                        w.WriteEndObject();
+                    }
+                }
                 H("vtable", k.ClubVtableRva); H("name", k.Name); H("shortName", k.ShortName);
                 if (k.Id is { } id) H("id", id);
                 if (k.Nation is { } cn) H("nation", cn);
@@ -817,6 +849,24 @@ public sealed class OffsetProfile
             {
                 w.WriteStartObject("competition");
                 H("teamCompetition", comp.TeamCompetition); H("vtable", comp.VtableRva); H("name", comp.Name); H("shortName", comp.ShortName);
+                if (comp.Fixtures is { } fixtures)
+                {
+                    w.WriteStartObject("fixtures");
+                    H("vtable", fixtures.FixtureVtable); H("nameVtable", fixtures.NameVtable);
+                    H("home", fixtures.Home); H("away", fixtures.Away); H("name", fixtures.Name);
+                    H("competition", fixtures.Competition); H("season", fixtures.Season); H("date", fixtures.Date);
+                    w.WriteEndObject();
+                }
+                if (comp.ClubSwap is { } swap)
+                {
+                    w.WriteStartObject("clubSwap");
+                    H("teamStadium", swap.TeamStadium); H("fixtureStadium", swap.FixtureStadium);
+                    H("secondaryStandings", swap.SecondaryStandings); H("standingTeam", swap.StandingTeam);
+                    H("standingName", swap.StandingName); H("teamSeasonState", swap.TeamSeasonState);
+                    H("competitions", swap.Competitions); H("participationStride", swap.ParticipationStride);
+                    H("participationStats", swap.ParticipationStats); H("statsVtable", swap.StatsVtable); H("statsTeam", swap.StatsTeam);
+                    w.WriteEndObject();
+                }
                 if (comp.Index is { } ci) H("index", ci);
                 if (comp.Id is { } cid) H("id", cid);
                 foreach (var (key, value) in new (string, int?)[]
@@ -891,6 +941,9 @@ public sealed class OffsetProfile
 
     static int Hex(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var v) ? ParseHex(v.GetString()) : throw new FormatException($"{name} is missing");
+
+    static Clubs.ClubProjectQueueOffsets ReadClubProjectQueue(JsonElement e) => new(
+        Hex(e, "vector"), Hex(e, "club"), Hex(e, "date"), OptHex(e, "stadium"), (uint?)OptHex(e, "vtable"));
 
     static int? OptHex(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var v) ? ParseHex(v.GetString()) : null;

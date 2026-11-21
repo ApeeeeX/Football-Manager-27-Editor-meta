@@ -49,6 +49,7 @@ internal sealed class InjuryTypeScreen(IScreenHost host)
     protected override bool Matches(InjuryTypeRow row, string q) => Fold(row.Name).Contains(q, StringComparison.Ordinal) || row.UniqueId.ToString(Inv) == q;
     protected override InjuryType RecordOf(InjuryTypeRow row) => row.Type;
     protected override ulong AddressOf(InjuryType type) => type.Address;
+    protected override EntityTabIdentity IdentityOf(InjuryType type) => new(type.Id);
     protected override string NameOf(InjuryType type) => type.Name ?? type.Id.ToString(Inv);
     protected override Dictionary<InjuryTypeField, string> NewDraft() => [];
     protected override bool HasChanges(InjuryType type, Dictionary<InjuryTypeField, string> draft) => draft.Count != 0;
