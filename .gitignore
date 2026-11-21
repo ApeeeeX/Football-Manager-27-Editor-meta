@@ -53,6 +53,9 @@ rule.md
 re/massedit-ui/
 
 
+# Calibration save: game-derived, local only (never commit)
+calibration/saves/
+
 # Local RE notes and caches
 re/*.md
 re/scratch-offline/
