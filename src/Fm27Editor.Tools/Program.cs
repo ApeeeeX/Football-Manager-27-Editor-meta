@@ -120,7 +120,7 @@ try
         "loan" => LoanCommand(args[1..]),
         "verify" => Verify(args[1]),
         "set" => Set(args[1], args[2], args[3]),
-        "move" => Move(args[1], int.Parse(args[2]), int.Parse(args[3]), args.Contains("--write")),
+        "move" => Move(args[1], args[2], int.Parse(args[3]), args.Contains("--write")),
         "releaseinspect" => ReleaseInspect(int.Parse(args[1])),
         "release" => ReleasePlayer(int.Parse(args[1]), args.Contains("--write")),
         "contractrm" => args.Length >= 3 ? ContractRemove(args[1], int.Parse(args[2])) : Usage(),
@@ -341,6 +341,7 @@ try
         "promises" => PromisesCommand(args[1..]),
         "temporarypermits" => TemporaryPermitsCommand(),
         "permitscan" => PermitScanCommand(args.Length > 1 ? int.Parse(args[1]) : 1),
+        "poolscan" => PoolScanCommand(Convert.ToUInt64(args[1].Replace("0x", ""), 16)),
         "memdump" => MemDumpCommand(args[1], args.Length > 2 ? Convert.ToInt32(args[2], 16) : 0x80),
         "jobscan" => JobScanCommand(Convert.ToUInt64(args[1].Replace("0x", ""), 16), args.Length > 2 ? Convert.ToInt32(args[2], 16) : 0x400),
         "intwithdrawal" => IntWithdrawalCommand(string.Join(" ", args[1..])),
@@ -2289,8 +2290,8 @@ int ReleaseInspect(int id)
     return 0;
 }
 
-// move <name> <buyer club id> <fee> [--write]   permanent transfer; without --write only prints the plan
-int Move(string name, int buyerId, int fee, bool write)
+// move <name> <buyer club id or name> <fee> [--write]   permanent transfer; without --write only prints the plan
+int Move(string name, string buyerKey, int fee, bool write)
 {
     using var session = Attach(writable: write);
     var all = session.Players.LoadAll();
@@ -2299,8 +2300,10 @@ int Move(string name, int buyerId, int fee, bool write)
     var sw = Stopwatch.StartNew();
     var clubs = session.LoadClubs(all);
     Console.WriteLine($"{clubs.Count} clubs, {clubs.Sum(c => c.Teams.Count)} teams in {sw.ElapsedMilliseconds} ms");
-    var buyer = clubs.SingleOrDefault(c => c.Id == buyerId);
-    if (buyer is null) { Console.Error.WriteLine($"no club with id {buyerId}"); return 2; }
+    var buyer = int.TryParse(buyerKey, out int buyerId)
+        ? clubs.SingleOrDefault(c => c.Id == buyerId)
+        : clubs.FirstOrDefault(c => c.DisplayName.Equals(buyerKey, StringComparison.OrdinalIgnoreCase));
+    if (buyer is null) { Console.Error.WriteLine($"no club {buyerKey}"); return 2; }
     var plan = session.Transfers.Plan(matches[0], clubs, buyer, fee);
     Console.WriteLine($"{matches[0].DisplayName}: {plan.Seller.DisplayName} -> {plan.Buyer.DisplayName} for {fee}, wage {plan.Wage}");
     Console.WriteLine($"into team 0x{plan.ToTeam.Address:X} ({plan.ToTeam.SquadCount}/{plan.ToTeam.SquadCapacity}{(plan.ToTeam.IsFirstTeam ? ", first team" : "")})"
@@ -4288,10 +4291,10 @@ int ContractTypes()
     return 0;
 }
 
-// future-create <player id> <club id> <yyyy-MM-dd> <fee> [--write]
+// future-create <player id> <club id or name> <yyyy-MM-dd> <fee> [--write]
 int FutureCreateCommand(string[] a)
 {
-    if (a.Length is < 4 or > 5 || !int.TryParse(a[0], out int id) || !int.TryParse(a[1], out int clubId) ||
+    if (a.Length is < 4 or > 5 || !int.TryParse(a[0], out int id) ||
         !DateOnly.TryParseExact(a[2], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.None, out var date) || !int.TryParse(a[3], out int fee) ||
         (a.Length == 5 && a[4] != "--write"))
@@ -4300,7 +4303,11 @@ int FutureCreateCommand(string[] a)
     using var session = Attach(writable: write);
     var all = session.Players.LoadAll();
     var player = all.Single(p => p.Id == id);
-    var club = session.LoadClubs(all).Single(c => c.Id == clubId);
+    var clubs = session.LoadClubs(all);
+    var club = (int.TryParse(a[1], out int clubId)
+            ? clubs.FirstOrDefault(c => c.Id == clubId)
+            : clubs.FirstOrDefault(c => c.DisplayName.Equals(a[1], StringComparison.OrdinalIgnoreCase)))
+        ?? throw new InvalidOperationException($"club {a[1]} not found");
     ulong team = club.FirstTeam?.Address ?? throw new InvalidOperationException("Destination has no first team");
     var today = session.ReadGameDate() ?? throw new InvalidOperationException("Could not read game date");
     var creator = new FutureTransferCreator(session.Memory, session.Profile, session.ModuleBase);
@@ -4308,7 +4315,13 @@ int FutureCreateCommand(string[] a)
     Console.WriteLine($"{player.DisplayName} ({id}): {player.ClubName} -> {club.DisplayName} ({clubId}); fee {fee}; {date:yyyy-MM-dd}; offer ID {plan.Id}");
     if (!write) { Console.WriteLine("Preview only. Add --write to apply."); return 0; }
     if (session.ReadGameDate() != today) throw new StaleObjectException("Game date changed; nothing written");
-    int offerId = creator.Apply(plan, session.AllocateGameBlock);
+    int offerId = creator.Apply(plan, size =>
+    {
+        ulong at = session.AllocateGameBlock(size);
+        int block = session.Profile.VectorAllocator is { } va ? GameVectorAllocator.BlockBytes(session.Memory, va, session.ModuleBase, size) : size;
+        Console.WriteLine($"  allocated {size} bytes ({block}-byte block) at 0x{at:X}");
+        return at;
+    });
     var refreshed = session.Players.Reload(player.Address) ?? throw new MemoryAccessException("Cannot reload player after write");
     var offers = session.Proposals.Read(refreshed);
     var transfer = session.FutureTransfers.Read(refreshed, offers).SingleOrDefault(t => t.Offer.Id == offerId);
@@ -7539,11 +7552,38 @@ int PermitScanCommand(int flag)
     return 0;
 }
 
-// memdump <addrHex> [lenHex]   bytes of the game process at an address (read only)
+// poolscan <allocator singleton rva>   every size pool of the game's vector allocator: capacity and header (read only)
+int PoolScanCommand(ulong rva)
+{
+    using var session = Attach(writable: false);
+    var m = session.Memory;
+    ulong alloc = session.ModuleBase + rva;
+    ulong begin = m.ReadUInt64(alloc + 0x18), end = m.ReadUInt64(alloc + 0x20);
+    Console.WriteLine($"allocator 0x{alloc:X}: pooled {m.Read(alloc + 0x34, 1)[0]}, header {BitConverter.ToInt32(m.Read(alloc + 0x30, 4))}, {(end - begin) / 8} pools");
+    var pools = m.Read(begin, (int)(end - begin));
+    int nonZeroHeader = 0, missing = 0, smaller = 0; var caps = new SortedDictionary<int, int>();
+    for (int size = 0; size < pools.Length / 8; size++)
+    {
+        ulong pool = BitConverter.ToUInt64(pools, size * 8);
+        if (pool == 0) { missing++; continue; }
+        var h = m.Read(pool + 0x140, 0x10);
+        int cap = BitConverter.ToInt32(h, 4), header = BitConverter.ToInt32(h, 8);
+        if (header != 0) { nonZeroHeader++; if (nonZeroHeader <= 5) Console.WriteLine($"  size {size}: header {header}"); }
+        if (cap < size) smaller++;
+        caps[cap] = caps.GetValueOrDefault(cap) + 1;
+    }
+    Console.WriteLine($"missing {missing}, non-zero header {nonZeroHeader}, capacity below size {smaller}");
+    Console.WriteLine("capacities: " + string.Join(" ", caps.Select(kv => $"{kv.Key}x{kv.Value}")));
+    return 0;
+}
+
+// memdump <addrHex|m+rvaHex> [lenHex]   bytes of the game process at an address or module RVA (read only)
 int MemDumpCommand(string address, int length)
 {
     using var session = Attach(writable: false);
-    ulong at = Convert.ToUInt64(address.Replace("0x", ""), 16);
+    ulong at = address.StartsWith("m+")
+        ? session.ModuleBase + Convert.ToUInt64(address[2..].Replace("0x", ""), 16)
+        : Convert.ToUInt64(address.Replace("0x", ""), 16);
     var bytes = session.Memory.Read(at, length);
     for (int i = 0; i < bytes.Length; i += 16) Console.WriteLine($"0x{at + (ulong)i:X}  {Convert.ToHexString(bytes.AsSpan(i, Math.Min(16, bytes.Length - i)))}");
     return 0;

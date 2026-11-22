@@ -7,6 +7,7 @@
   "gameUiRva": "0x5774B60",
   "gameUiVtable": "0x557E060",
   "gameUiLoadsOffset": "0x100",
+  "vectorAllocator": { "instanceRva": "0x5791750", "pools": "0x18", "pooled": "0x34", "header": "0x30", "poolCapacity": "0x144", "poolHeader": "0x148" },
   "retirementManagerRva": "0x57782B8",
   "retirementManagerVtable": "0x56C43F8",
   "inMatch": {

@@ -227,6 +227,7 @@
   "playerList": {
     "rootRva": "0x594C098"
   },
+  "vectorAllocator": { "instanceRva": "0x593A130", "pools": "0x18", "pooled": "0x34", "header": "0x30", "poolCapacity": "0x144", "poolHeader": "0x148" },
   "retirementManagerRva": "0x591CE08",
   "globalArrays": {
     "clubsSlotRva": "0x594C250"

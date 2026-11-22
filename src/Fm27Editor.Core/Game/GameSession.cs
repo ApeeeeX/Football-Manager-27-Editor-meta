@@ -47,7 +47,9 @@ public sealed class GameSession : IDisposable
         }
         else if (_memory is IGameHeapAllocator heap)
         {
-            at = heap.AllocateFromGameHeap(size);
+            // The game may hand this block back to a size pool that reuses it at the pool's capacity; see GameVectorAllocator.
+            int bytes = Profile.VectorAllocator is { } va ? GameVectorAllocator.BlockBytes(_memory, va, Game.ModuleBase, size) : size;
+            at = heap.AllocateFromGameHeap(bytes);
             if (_memory is not IMemoryAllocationObserver)
                 (_memory as IMemoryWriteObserver)?.OnAllocate?.Invoke(at, size);
             return at;

@@ -91,6 +91,11 @@ public sealed class OffsetProfile
     public uint? GameUiRva { get; init; }
     public uint? GameUiVtable { get; init; }
     public int? GameUiLoadsOffset { get; init; }
+    /// <summary>
+    /// The game's size-pooled allocator that vector buffers come from and go back to (profile <c>vectorAllocator</c>);
+    /// null when the build was not measured. See <see cref="Memory.GameVectorAllocator"/>.
+    /// </summary>
+    public VectorAllocatorOffsets? VectorAllocator { get; init; }
     /// <summary>The planned-retirement manager: the module slot holding it and its vtable (null when the build was not measured).</summary>
     public uint? RetirementManagerRva { get; init; }
     public uint? RetirementManagerVtable { get; init; }
@@ -189,6 +194,9 @@ public sealed class OffsetProfile
             GameUiRva = gameUiRva,
             GameUiVtable = gameUiVtable,
             GameUiLoadsOffset = gameUiLoads,
+            VectorAllocator = root.TryGetProperty("vectorAllocator", out var vecAlloc)
+                ? new VectorAllocatorOffsets((uint)Hex(vecAlloc, "instanceRva"), Hex(vecAlloc, "pools"), Hex(vecAlloc, "pooled"), Hex(vecAlloc, "header"), Hex(vecAlloc, "poolCapacity"), Hex(vecAlloc, "poolHeader"))
+                : null,
             RetirementManagerRva = root.TryGetProperty("retirementManagerRva", out _) ? (uint)Hex(root, "retirementManagerRva") : null,
             RetirementManagerVtable = root.TryGetProperty("retirementManagerVtable", out _) ? (uint)Hex(root, "retirementManagerVtable") : null,
             NationAppointmentVtable = root.TryGetProperty("nationAppointmentVtable", out _) ? (uint)Hex(root, "nationAppointmentVtable") : null,
@@ -980,6 +988,12 @@ public readonly record struct PlayerInsertion(int At, int Length)
 {
     public int Translate(int canonicalOffset) => canonicalOffset >= At ? checked(canonicalOffset + Length) : canonicalOffset;
 }
+
+/// <summary>
+/// The game's vector allocator: the static instance, its begin/end vector of per-size pools, the byte that turns pooling
+/// on, the size header the unpooled path puts in front of a block, and in each pool its block capacity and block header.
+/// </summary>
+public sealed record VectorAllocatorOffsets(uint InstanceRva, int Pools, int Pooled, int Header, int PoolCapacity, int PoolHeader);
 
 public sealed record VtableClassSpec(string Class, int Offset = 0, string[]? FallbackClasses = null, bool Optional = false);
 
