@@ -1129,6 +1129,11 @@
       "license": "0x13C",
       "roles": "0xD0"
     },
+    "managerUnlockables": {
+      "flags": "0x3FC",
+      "allPlayersInterested": "0x1",
+      "becomeUnsackable": "0x2"
+    },
     "allowances": {
       "teamManager": "0x80",
       "humanMscc": "0x388",

@@ -114,4 +114,98 @@ public class ClubProjectsTests
             BitConverter.GetBytes(0x07EA0148u).CopyTo(dateObject, chain.DateOffset);
         }
     }
+
+    /// <summary>
+    /// Windows Steam 27.1.0 (19/12/2026): Bournemouth's expansion queue row (+0x18 of the finance manager's vector) and
+    /// its db::STADIUM_CHANGE (Vitality Stadium at +0x20, completion 30/06/2027 at +0x34) both carried 0x07EB00B5.
+    /// Moving both to the game date made the game finish the works the next day (capacity 11,700 → 17,358); the
+    /// 30/06/2028 change of the same stadium stayed scheduled. A change whose queue row FM already dropped (Wrexham)
+    /// is still a project of the club that owns the stadium.
+    /// </summary>
+    [Fact]
+    public void Brings_the_stadium_change_of_the_same_stadium_and_day_forward_with_its_expansion_on_windows()
+    {
+        var profile = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", "27.1.0+2505117-steam.json"));
+        var layout = profile.Club!.Projects!;
+        var changesLayout = layout.StadiumChanges!;
+        var stadiumLayout = profile.Stadium!;
+        var memory = new FakeMemory();
+        const ulong module = TestWorld.ModuleBase;
+        const ulong clubAddress = 0x6000_0000, finance = 0x6001_0000, expansions = 0x6002_0000, expansionSlots = 0x6003_0000;
+        const ulong expansion = 0x6004_0000, empty = 0x6005_0000, table = 0x6006_0000, changeVector = 0x6007_0000;
+        const ulong changeSlots = 0x6008_0000, change2027 = 0x6009_0000, change2028 = 0x600A_0000, venue = 0x600B_0000;
+        const ulong orphan = 0x600C_0000, ownVenue2 = 0x600D_0000;
+        var club = new ClubEntry(clubAddress, 20, "Bournemouth", null, 0, []);
+        var clubBytes = memory.Map(clubAddress, 0x80);
+        TestWorld.Set64(clubBytes, 0, module + profile.Club.ClubVtableRva);
+        BitConverter.GetBytes(20).CopyTo(clubBytes, profile.Club.Id!.Value);
+        TestWorld.Set64(memory.Map(module + layout.ManagerRoot, 8), 0, finance);
+        var manager = memory.Map(finance, 0x40);
+        TestWorld.Set64(manager, 0, module + layout.ManagerVtable);
+        memory.Map(empty, 24);
+        TestWorld.Set64(manager, layout.Upgrades.Vector, empty);
+        TestWorld.Set64(manager, layout.StadiumPlans!.Value, empty);
+        TestWorld.Set64(manager, layout.Expansions.Vector, expansions);
+        Vector(expansions, expansionSlots, expansion);
+        const uint june2027 = 0x07EB00B5, june2028 = 0x07EC00B6, july2027 = 0x07EB00B6, today = 0x07EA0162;
+        var row = memory.Map(expansion, 0x40);
+        TestWorld.Set64(row, layout.Expansions.Club, clubAddress);
+        TestWorld.Set64(row, layout.Expansions.Stadium!.Value, venue);
+        BitConverter.GetBytes(june2027).CopyTo(row, layout.Expansions.Date);
+        Venue(venue);
+        Venue(ownVenue2);
+        TestWorld.Set64(memory.Map(module + changesLayout.TableRoot, 8), 0, table);
+        var tableBytes = memory.Map(table, changesLayout.Vector + 8);
+        TestWorld.Set64(tableBytes, 0, module + changesLayout.TableVtable);
+        TestWorld.Set64(tableBytes, changesLayout.Vector, changeVector);
+        Vector(changeVector, changeSlots, change2027, change2028, orphan);
+        var first = Change(change2027, venue, june2027);
+        var second = Change(change2028, venue, june2028);
+        var dropped = Change(orphan, ownVenue2, july2027);
+        var clock = profile.GameDate!.Primary;
+        TestWorld.Set64(memory.Map(module + clock.RootRva, 8), 0, 0x6100_0000);
+        var dateObject = memory.Map(0x6100_0000, clock.DateOffset + 4);
+        TestWorld.Set64(dateObject, 0, module + clock.ObjectVtableRva!.Value);
+        BitConverter.GetBytes(today).CopyTo(dateObject, clock.DateOffset);
+
+        var editor = new ClubProjects(memory, profile, module);
+        var scheduled = editor.ReadOverview(club).Scheduled;
+        Assert.Equal(3, scheduled.Count);
+        var withQueue = Assert.Single(scheduled, p => p.DateAddress != 0);
+        Assert.Equal(new DateOnly(2027, 6, 30), withQueue.ScheduledDate);
+        Assert.Equal(change2027 + (ulong)changesLayout.Date, withQueue.ChangeDateAddress);
+        Assert.Equal(new DateOnly(2027, 7, 1), Assert.Single(scheduled, p => p.Address == orphan).ScheduledDate);
+
+        editor.BringForward(club, withQueue, editor.ReadOverview(club).Today);
+        Assert.Equal(today, BitConverter.ToUInt32(row, layout.Expansions.Date));
+        Assert.Equal(today, BitConverter.ToUInt32(first, changesLayout.Date));
+        Assert.Equal(june2028, BitConverter.ToUInt32(second, changesLayout.Date));
+        Assert.Equal(july2027, BitConverter.ToUInt32(dropped, changesLayout.Date));
+
+        void Vector(ulong header, ulong slots, params ulong[] items)
+        {
+            var h = memory.Map(header, 24);
+            TestWorld.Set64(h, 0, slots);
+            TestWorld.Set64(h, 8, slots + (ulong)items.Length * 8);
+            TestWorld.Set64(h, 16, slots + (ulong)items.Length * 8);
+            var s = memory.Map(slots, items.Length * 8);
+            for (int i = 0; i < items.Length; i++) TestWorld.Set64(s, i * 8, items[i]);
+        }
+
+        void Venue(ulong address)
+        {
+            var bytes = memory.Map(address, stadiumLayout.Owner + 8);
+            TestWorld.Set64(bytes, 0, module + stadiumLayout.VtableRva);
+            TestWorld.Set64(bytes, stadiumLayout.Owner, clubAddress);
+        }
+
+        byte[] Change(ulong address, ulong stadium, uint date)
+        {
+            var bytes = memory.Map(address, 0x40);
+            TestWorld.Set64(bytes, 0, module + changesLayout.Vtable);
+            TestWorld.Set64(bytes, changesLayout.Stadium, stadium);
+            BitConverter.GetBytes(date).CopyTo(bytes, changesLayout.Date);
+            return bytes;
+        }
+    }
 }

@@ -684,8 +684,9 @@ public sealed class GameSession : IDisposable
 
     public IReadOnlyList<Clubs.ClubRelationship> ReadClubRelationships(ulong clubAddress) =>
         new Clubs.ClubRelationshipReader(_memory, Profile, ModuleBase).Read(clubAddress);
-    public void SetClubRelationship(ulong clubAddress, Clubs.ClubRelationship row, int? reason, bool? permanent, int? value) =>
-        new Clubs.ClubRelationshipWriter(_memory, Profile, ModuleBase).SetDetails(clubAddress, row, reason, permanent, value);
+    public void SetClubRelationship(ulong clubAddress, Clubs.ClubRelationship row, int? reason, bool? permanent, int? value,
+        bool? canNameStadium = null) =>
+        new Clubs.ClubRelationshipWriter(_memory, Profile, ModuleBase).SetDetails(clubAddress, row, reason, permanent, value, canNameStadium);
 
     /// <summary>New sell-on owed by <paramref name="club"/>; the record is allocated in the game process.</summary>
     public ulong AddSellOn(ulong club, int playerId, ulong beneficiary, int percent, int? signedFor = null) =>

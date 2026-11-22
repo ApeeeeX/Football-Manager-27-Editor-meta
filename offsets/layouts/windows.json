@@ -500,7 +500,8 @@
       "dislikesPersonType": "0x2",
       "clubKind": "0x1",
       "personKind": "0x3",
-      "teamKind": "0x4"
+      "teamKind": "0x4",
+      "nameStadium": "0xE"
     },
     "financeLists": {
       "sponsorsPointer": "0x130",
@@ -1136,6 +1137,11 @@
       "goals": "0x136",
       "license": "0x13C",
       "roles": "0xD0"
+    },
+    "managerUnlockables": {
+      "flags": "0x3FC",
+      "allPlayersInterested": "0x1",
+      "becomeUnsackable": "0x2"
     },
     "allowances": {
       "teamManager": "0x80",

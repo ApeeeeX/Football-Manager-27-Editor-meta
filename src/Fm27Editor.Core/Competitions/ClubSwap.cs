@@ -67,8 +67,12 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
         Replace(second.Participation, layout.ParticipationStats, second.Stats, first.Stats, "Season statistics");
         Replace(first.Stats, layout.StatsTeam, firstTeam, secondTeam, "Season participant");
         Replace(second.Stats, layout.StatsTeam, secondTeam, firstTeam, "Season participant");
-        Replace(first.PrimaryRow, layout.StandingName, first.Name, second.Name, "Standing club name");
-        Replace(second.PrimaryRow, layout.StandingName, second.Name, first.Name, "Standing club name");
+        // Windows 27.1.0 standing rows keep no club name pointer (row + 0x00..0x80 all zero before the first match).
+        if (layout.StandingName is { } standingName)
+        {
+            Replace(first.PrimaryRow, standingName, first.Name, second.Name, "Standing club name");
+            Replace(second.PrimaryRow, standingName, second.Name, first.Name, "Standing club name");
+        }
         Replace(first.PrimaryRow, layout.StandingTeam, firstTeam, secondTeam, "League table team");
         Replace(second.PrimaryRow, layout.StandingTeam, secondTeam, firstTeam, "League table team");
         Replace(first.MirrorRow, layout.StandingTeam, firstTeam, secondTeam, "League table team");
@@ -164,8 +168,12 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
             Require(stats, 0, moduleBase + layout.StatsVtable);
             ulong stadium = ReadGuard(outgoing + (ulong)layout.TeamStadium);
             Require(stadium, 0, moduleBase + profile.Stadium!.VtableRva);
-            ulong name = memory.ReadUInt64(row.Address + (ulong)layout.StandingName);
-            if (name == 0) throw Stale();
+            ulong name = 0;
+            if (layout.StandingName is { } standingName)
+            {
+                name = memory.ReadUInt64(row.Address + (ulong)standingName);
+                if (name == 0) throw Stale();
+            }
             return new(row.Address, mirrorMembers[outgoing], name, entry, stats, stadium);
         }
 

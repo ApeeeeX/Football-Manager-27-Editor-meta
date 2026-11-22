@@ -8,10 +8,26 @@ namespace Fm27Editor.Core.Clubs;
 public enum ClubProjectKind { StadiumExpansion, FacilityUpgrade }
 
 public sealed record ClubProjectQueueOffsets(int Vector, int Club, int Date, int? Stadium, uint? Vtable);
-public sealed record ClubProjectOffsets(uint ManagerRoot, uint ManagerVtable, ClubProjectQueueOffsets Expansions, ClubProjectQueueOffsets Upgrades,
-    int? StadiumPlans = null, int? StadiumPlanExpiry = null);
 
-public sealed record ClubProject(ClubProjectKind Kind, ulong Address, ulong DateAddress, uint RawDate, DateOnly ScheduledDate);
+/// <summary>
+/// The game's table of pending stadium changes (<c>db::DATABASE_TABLE&lt;db::STADIUM_CHANGE&gt;</c>), the record that
+/// actually finishes a capacity change. Windows Steam 27.1.0, 18/12/2026: moving Wrexham's completion date (+0x34)
+/// to the game date removed the row on the next day and STōK Cae Ras went from 10,859 to its +0x3C target of 18,500;
+/// moving only the finance manager's expansion row, or +0x30, did not. The CE preset "Complete Active Board
+/// Requests" writes this table as well as the finance manager queues.
+/// </summary>
+public sealed record StadiumChangeOffsets(uint TableRoot, uint TableVtable, int Vector, uint Vtable, int Stadium, int Date);
+
+public sealed record ClubProjectOffsets(uint ManagerRoot, uint ManagerVtable, ClubProjectQueueOffsets Expansions, ClubProjectQueueOffsets Upgrades,
+    int? StadiumPlans = null, int? StadiumPlanExpiry = null)
+{
+    public StadiumChangeOffsets? StadiumChanges { get; init; }
+}
+
+/// <summary>A scheduled project. <paramref name="ChangeDateAddress"/> is the stadium change that completes an
+/// expansion (0 when the build has no stadium change table or the expansion has none).</summary>
+public sealed record ClubProject(ClubProjectKind Kind, ulong Address, ulong DateAddress, uint RawDate, DateOnly ScheduledDate,
+    ulong ChangeDateAddress = 0, uint ChangeRawDate = 0);
 public sealed record StadiumPlan(DateOnly? ExpiryDate);
 public sealed record ClubProjectOverview(DateOnly Today, IReadOnlyList<ClubProject> Scheduled, StadiumPlan? Planning);
 
@@ -68,16 +84,24 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
             {
                 if (project.ScheduledDate <= today) throw new StaleObjectException("This project is already due");
                 if (!current.Remove(project)) throw new StaleObjectException("The club project changed since it was reviewed");
-                var after = WithDate(project.RawDate, today);
-                if (!staged.TryWrite(project.DateAddress, BitConverter.GetBytes(after)))
+                if (project.DateAddress != 0 &&
+                    !staged.TryWrite(project.DateAddress, BitConverter.GetBytes(WithDate(project.RawDate, today))))
                     throw new MemoryAccessException("Could not set the project completion date");
+                if (project.ChangeDateAddress != 0 &&
+                    !staged.TryWrite(project.ChangeDateAddress, BitConverter.GetBytes(WithDate(project.ChangeRawDate, today))))
+                    throw new MemoryAccessException("Could not set the stadium change completion date");
             }
         });
     }
 
     public void ValidateUndo(IProcessMemory source, ClubEntry club, ClubProject project, DateOnly appliedDate)
     {
-        var written = project with { RawDate = WithDate(project.RawDate, appliedDate), ScheduledDate = appliedDate };
+        var written = project with
+        {
+            RawDate = project.DateAddress == 0 ? project.RawDate : WithDate(project.RawDate, appliedDate),
+            ChangeRawDate = project.ChangeDateAddress == 0 ? 0 : WithDate(project.ChangeRawDate, appliedDate),
+            ScheduledDate = appliedDate,
+        };
         if (!Read(source, club, DateOnly.MinValue).Contains(written))
             throw new StaleObjectException("The club project is no longer in the queue");
     }
@@ -111,8 +135,12 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
     {
         var stadium = profile.Stadium ?? throw new NotSupportedException("Club projects are unavailable on this game build");
         var result = new List<ClubProject>();
+        var changes = ReadStadiumChanges(source, club, today, layout, stadium);
         ReadQueue(layout.Expansions, ClubProjectKind.StadiumExpansion);
         ReadQueue(layout.Upgrades, ClubProjectKind.FacilityUpgrade);
+        // A change left without its finance queue row (FM drops the row once it is due) still finishes the works.
+        foreach (var change in changes.Where(c => c.Owned))
+            result.Add(new(ClubProjectKind.StadiumExpansion, change.Row, 0, 0, change.Date, change.DateAddress, change.Raw));
         return result.OrderBy(project => project.ScheduledDate).ToArray();
 
         void ReadQueue(ClubProjectQueueOffsets queue, ClubProjectKind kind)
@@ -124,17 +152,53 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
                 if (address == 0 || source.ReadUInt64(address + (ulong)queue.Club) != club.Address) continue;
                 if (queue.Vtable is { } vt && source.ReadUInt64(address) != moduleBase + vt)
                     throw new StaleObjectException("The facility upgrade record is invalid");
+                ulong venue = 0;
                 if (queue.Stadium is { } at)
                 {
-                    ulong venue = source.ReadUInt64(address + (ulong)at);
+                    venue = source.ReadUInt64(address + (ulong)at);
                     if (venue == 0 || source.ReadUInt64(venue) != moduleBase + stadium.VtableRva)
                         throw new StaleObjectException("The stadium expansion record is invalid");
                 }
                 ulong dateAddress = address + (ulong)queue.Date;
                 uint raw = BitConverter.ToUInt32(source.Read(dateAddress, 4));
-                if (DecodeDate(raw) is { } date && date >= today) result.Add(new(kind, address, dateAddress, raw, date));
+                if (DecodeDate(raw) is not { } date || date < today) continue;
+                // The change that finishes this expansion is the one for the same stadium on the same day.
+                int match = venue == 0 ? -1 : changes.FindIndex(c => c.Venue == venue && c.Date == date);
+                if (match >= 0)
+                {
+                    var change = changes[match];
+                    changes.RemoveAt(match);
+                    result.Add(new(kind, address, dateAddress, raw, date, change.DateAddress, change.Raw));
+                }
+                else
+                    result.Add(new(kind, address, dateAddress, raw, date));
             }
         }
+    }
+
+    /// <summary>Pending stadium changes; <c>Owned</c> marks stadiums the club owns.</summary>
+    List<(ulong Venue, bool Owned, ulong Row, ulong DateAddress, uint Raw, DateOnly Date)> ReadStadiumChanges(
+        IProcessMemory source, ClubEntry club, DateOnly today, ClubProjectOffsets layout, Stadiums.StadiumOffsets stadium)
+    {
+        var found = new List<(ulong, bool, ulong, ulong, uint, DateOnly)>();
+        if (layout.StadiumChanges is not { } t) return found;
+        ulong table = source.ReadUInt64(moduleBase + t.TableRoot);
+        if (table == 0 || source.ReadUInt64(table) != moduleBase + t.TableVtable)
+            throw new StaleObjectException("The stadium change table is unavailable");
+        var pointers = ReadQueuePointers(source, table, t.Vector);
+        for (int i = 0; i < pointers.Length; i += 8)
+        {
+            ulong row = BitConverter.ToUInt64(pointers, i);
+            if (row == 0) continue;
+            if (source.ReadUInt64(row) != moduleBase + t.Vtable) throw new StaleObjectException("The stadium change record is invalid");
+            ulong venue = source.ReadUInt64(row + (ulong)t.Stadium);
+            if (venue == 0 || source.ReadUInt64(venue) != moduleBase + stadium.VtableRva) continue;
+            bool owned = source.ReadUInt64(venue + (ulong)stadium.Owner) == club.Address;
+            ulong dateAddress = row + (ulong)t.Date;
+            uint raw = BitConverter.ToUInt32(source.Read(dateAddress, 4));
+            if (DecodeDate(raw) is { } date && date >= today) found.Add((venue, owned, row, dateAddress, raw, date));
+        }
+        return found;
     }
 
     static byte[] ReadQueuePointers(IProcessMemory source, ulong manager, int vectorField)

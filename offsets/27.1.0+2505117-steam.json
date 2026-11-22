@@ -432,6 +432,15 @@
     "clauses": "0x60"
   },
   "club": {
+    "projects": {
+      "stadiumPlans": "0x28",
+      "stadiumPlanExpiry": "0x38",
+      "managerRoot": "0x587C600",
+      "managerVtable": "0x4EF65F0",
+      "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8" },
+      "upgrades": { "vector": "0x20", "club": "0x8", "date": "0x10", "vtable": "0x4C9BE18" },
+      "stadiumChanges": { "tableRoot": "0x587B840", "tableVtable": "0x4DE8EE8", "vector": "0x80", "vtable": "0x5053058", "stadium": "0x20", "date": "0x34" }
+    },
     "medicalStaff": "0x60",
     "coachingStaff": "0x78",
     "scoutingStaff": "0x90",
@@ -511,7 +520,8 @@
       "dislikesPersonType": "0x2",
       "clubKind": "0x1",
       "personKind": "0x3",
-      "teamKind": "0x4"
+      "teamKind": "0x4",
+      "nameStadium": "0xE"
     },
     "financeLists": {
       "sponsorsPointer": "0x130",
@@ -1065,6 +1075,17 @@
     }
   },
   "competition": {
+    "fixtures": {
+      "vtable": "0x4E17768", "nameVtable": "0x4C751D8",
+      "home": "0x8", "away": "0x10", "name": "0x20",
+      "competition": "0x18", "season": "0x30", "date": "0x4C"
+    },
+    "clubSwap": {
+      "teamStadium": "0x78", "fixtureStadium": "0x28",
+      "secondaryStandings": "0x140", "standingTeam": "0x88",
+      "teamSeasonState": "0xA0", "competitions": "0x50", "participationStride": "0x18",
+      "participationStats": "0x8", "statsVtable": "0x4F47F48", "statsTeam": "0x18"
+    },
     "squadRulesContainerVtable": "0x4E4E018",
     "prizeMoney": {
       "holder": "0xB0",
@@ -1147,6 +1168,11 @@
       "goals": "0x136",
       "license": "0x13C",
       "roles": "0xD0"
+    },
+    "managerUnlockables": {
+      "flags": "0x3FC",
+      "allPlayersInterested": "0x1",
+      "becomeUnsackable": "0x2"
     },
     "allowances": {
       "teamManager": "0x80",

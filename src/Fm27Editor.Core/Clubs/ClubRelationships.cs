@@ -14,7 +14,7 @@ public enum ClubRelationshipKind { Rival, LikesPerson, DislikesPerson, Other }
 /// <see cref="Snapshot"/> is the whole 16-byte record as read, the guard for writes.
 /// </summary>
 public sealed record ClubRelationship(ulong Address, ClubRelationshipKind Kind, int TypeCode, string? Name, int Value,
-    int Reason, bool Permanent, string Snapshot, ulong Begin, ulong End, ulong Capacity, ulong Target = 0, ulong TargetClub = 0);
+    int Reason, bool Permanent, string Snapshot, ulong Begin, ulong End, ulong Capacity, ulong Target = 0, ulong TargetClub = 0, bool? CanNameStadium = null);
 
 /// <summary>Read-only snapshot of the vector stored inline in the club object (club + Vector).</summary>
 public sealed class ClubRelationshipReader(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
@@ -43,7 +43,8 @@ public sealed class ClubRelationshipReader(IProcessMemory memory, OffsetProfile 
             byte targetKind = bytes[i + o.Kind];
             rows.Add(new(begin + (ulong)i, kind, type, TargetName(target, targetKind), bytes[i + o.Value],
                 bytes[i + o.Reason], bytes[i + o.Flags] == PermanentFlag, Convert.ToHexString(bytes, i, o.RecordSize), begin, end, cap,
-                target, TargetClubAddress(target, targetKind)));
+                target, TargetClubAddress(target, targetKind),
+                kind == ClubRelationshipKind.LikesPerson && o.NameStadium is { } ns ? bytes[i + ns] != 0 : null));
         }
         return rows.AsReadOnly();
     }
@@ -111,19 +112,22 @@ public sealed class ClubRelationshipWriter(IProcessMemory memory, OffsetProfile 
     public void SetValue(ulong club, ClubRelationship row, int value) => SetDetails(club, row, null, null, value);
 
     /// <summary>Reason is the low byte of the int16 at +Reason (as FMRTE 27 wrote it); Permanent is +Flags 0x4F / 0x00.</summary>
-    public void SetDetails(ulong club, ClubRelationship row, int? reason, bool? permanent, int? value)
+    public void SetDetails(ulong club, ClubRelationship row, int? reason, bool? permanent, int? value, bool? canNameStadium = null)
     {
         if (row.Kind == ClubRelationshipKind.Other) throw new ArgumentException("Only Rival, Likes Person and Dislikes Person rows are editable", nameof(row));
         if (value is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(value), "Relationship value is 1–100");
         if (reason is { } r && (r < 0 || r >= ReasonCount(row.Kind))) throw new ArgumentOutOfRangeException(nameof(reason));
         if (permanent is not null && row.Kind == ClubRelationshipKind.Rival) throw new ArgumentException("Rival rows have no Permanent flag", nameof(permanent));
         var o = profile.Club?.Relationships ?? throw new InvalidOperationException("Profile has no club relationship offsets");
+        if (canNameStadium is not null && (row.Kind != ClubRelationshipKind.LikesPerson || o.NameStadium is null))
+            throw new ArgumentException("Only liked people can have a stadium named after them on this build", nameof(canNameStadium));
         var before = Convert.FromHexString(row.Snapshot);
         Require(club, row, o, before);
         var after = (byte[])before.Clone();
         if (reason is { } rc) { after[o.Reason] = (byte)rc; after[o.Reason + 1] = 0; }
         if (value is { } v) after[o.Value] = (byte)v;
         if (permanent is { } p) after[o.Flags] = p ? PermanentFlag : (byte)0;
+        if (canNameStadium is { } named) after[o.NameStadium!.Value] = named ? (byte)1 : (byte)0;
         if (!memory.TryWrite(row.Address, after) || !memory.Read(row.Address, after.Length).AsSpan().SequenceEqual(after))
             throw new MemoryAccessException($"Could not write {after.Length} bytes at 0x{row.Address:X}");
     }

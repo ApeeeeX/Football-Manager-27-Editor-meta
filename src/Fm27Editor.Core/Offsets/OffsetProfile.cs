@@ -311,7 +311,12 @@ public sealed class OffsetProfile
                 Projects = k.TryGetProperty("projects", out var projects) ? new Clubs.ClubProjectOffsets(
                     (uint)Hex(projects, "managerRoot"), (uint)Hex(projects, "managerVtable"),
                     ReadClubProjectQueue(projects.GetProperty("expansions")), ReadClubProjectQueue(projects.GetProperty("upgrades")),
-                    OptHex(projects, "stadiumPlans"), OptHex(projects, "stadiumPlanExpiry")) : null,
+                    OptHex(projects, "stadiumPlans"), OptHex(projects, "stadiumPlanExpiry"))
+                {
+                    StadiumChanges = projects.TryGetProperty("stadiumChanges", out var sc) ? new Clubs.StadiumChangeOffsets(
+                        (uint)Hex(sc, "tableRoot"), (uint)Hex(sc, "tableVtable"), Hex(sc, "vector"), (uint)Hex(sc, "vtable"),
+                        Hex(sc, "stadium"), Hex(sc, "date")) : null,
+                } : null,
                 ClubVtableRva = (uint)Hex(k, "vtable"),
                 Name = Hex(k, "name"),
                 ShortName = Hex(k, "shortName"),
@@ -385,7 +390,7 @@ public sealed class OffsetProfile
                     Hex(fixtures, "season"), Hex(fixtures, "date")) : null,
                 ClubSwap = comp.TryGetProperty("clubSwap", out var swap) ? new Competitions.ClubSwapOffsets(
                     Hex(swap, "teamStadium"), Hex(swap, "fixtureStadium"), Hex(swap, "secondaryStandings"),
-                    Hex(swap, "standingTeam"), Hex(swap, "standingName"), Hex(swap, "teamSeasonState"),
+                    Hex(swap, "standingTeam"), OptHex(swap, "standingName"), Hex(swap, "teamSeasonState"),
                     Hex(swap, "competitions"), Hex(swap, "participationStride"), Hex(swap, "participationStats"),
                     (uint)Hex(swap, "statsVtable"), Hex(swap, "statsTeam")) : null,
                 VtableRva = (uint)Hex(comp, "vtable"),
@@ -708,6 +713,13 @@ public sealed class OffsetProfile
                     if (projects.StadiumPlanExpiry is { } expiry) H("stadiumPlanExpiry", expiry);
                     WriteQueue("expansions", projects.Expansions);
                     WriteQueue("upgrades", projects.Upgrades);
+                    if (projects.StadiumChanges is { } sc)
+                    {
+                        w.WriteStartObject("stadiumChanges");
+                        H("tableRoot", sc.TableRoot); H("tableVtable", sc.TableVtable); H("vector", sc.Vector);
+                        H("vtable", sc.Vtable); H("stadium", sc.Stadium); H("date", sc.Date);
+                        w.WriteEndObject();
+                    }
                     w.WriteEndObject();
 
                     void WriteQueue(string name, Clubs.ClubProjectQueueOffsets queue)
@@ -862,7 +874,7 @@ public sealed class OffsetProfile
                     w.WriteStartObject("clubSwap");
                     H("teamStadium", swap.TeamStadium); H("fixtureStadium", swap.FixtureStadium);
                     H("secondaryStandings", swap.SecondaryStandings); H("standingTeam", swap.StandingTeam);
-                    H("standingName", swap.StandingName); H("teamSeasonState", swap.TeamSeasonState);
+                    if (swap.StandingName is { } standingName) H("standingName", standingName); H("teamSeasonState", swap.TeamSeasonState);
                     H("competitions", swap.Competitions); H("participationStride", swap.ParticipationStride);
                     H("participationStats", swap.ParticipationStats); H("statsVtable", swap.StatsVtable); H("statsTeam", swap.StatsTeam);
                     w.WriteEndObject();

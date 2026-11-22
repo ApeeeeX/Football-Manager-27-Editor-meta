@@ -9,7 +9,7 @@ namespace Fm27Editor.Core.Competitions;
 public sealed record LeagueFixtureOffsets(uint FixtureVtable, uint NameVtable, int Home, int Away, int Name, int Competition, int Season, int Date);
 
 public sealed record ClubSwapOffsets(int TeamStadium, int FixtureStadium, int SecondaryStandings, int StandingTeam,
-    int StandingName, int TeamSeasonState, int Competitions, int ParticipationStride, int ParticipationStats,
+    int? StandingName, int TeamSeasonState, int Competitions, int ParticipationStride, int ParticipationStats,
     uint StatsVtable, int StatsTeam);
 
 public sealed record ClubSwapFixture(CompetitionRecord Competition, DateOnly Date, int RoundRobinCopies,

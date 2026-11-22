@@ -2300,6 +2300,12 @@ public sealed partial class MainWindow : IClubPanels
             permanent = new CheckBox { Content = Loc.S("Permanent"), IsChecked = row.Permanent, VerticalAlignment = VerticalAlignment.Center };
             panel.Children.Add(permanent);
         }
+        CheckBox? nameStadium = null;
+        if (row.CanNameStadium is { } named)
+        {
+            nameStadium = new CheckBox { Content = Loc.S("Can Name Stadium After Person"), IsChecked = named, VerticalAlignment = VerticalAlignment.Center };
+            panel.Children.Add(nameStadium);
+        }
         var save = new Button { IsVisible = false, Content = Loc.S("Save changes") };
         save.Click += (_, _) =>
         {
@@ -2307,7 +2313,7 @@ public sealed partial class MainWindow : IClubPanels
             try
             {
                 backend.Edits.Execute("Club", club.DisplayName, "Relationships: Edit", () => session.SetClubRelationship(club.Address, row,
-                    reason is { SelectedIndex: >= 0 } r ? r.SelectedIndex : null, permanent?.IsChecked, v));
+                    reason is { SelectedIndex: >= 0 } r ? r.SelectedIndex : null, permanent?.IsChecked, v, nameStadium?.IsChecked));
                 RenderClubEditor();
                 status.Text = Loc.S("Saved. Continue in FM to see updates.");
             }

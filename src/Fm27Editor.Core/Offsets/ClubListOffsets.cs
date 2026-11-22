@@ -121,6 +121,10 @@ public sealed record ClubRelationshipOffsets(
     int Vector, int RecordSize, int Target, int Reason, int Kind, int Type, int Value, int Flags,
     int RivalType, int LikesPersonType, int DislikesPersonType, int ClubKind, int PersonKind, int TeamKind)
 {
+    /// <summary>Liked person rows: "Can Name Stadium After Person", a byte that is 1 or 0 (Windows 27.1.0: +0xE, set for
+    /// exactly Alex Ferguson at Man Utd and Guardiola, Kompany and David Silva at Man City, as the IGE shows).</summary>
+    public int? NameStadium { get; init; }
+
     static readonly string[] Keys =
     [
         "vector", "recordSize", "target", "reason", "kind", "type", "value", "flags",
@@ -131,7 +135,11 @@ public sealed record ClubRelationshipOffsets(
     {
         int[] v = Keys.Select(key => Convert.ToInt32(e.GetProperty(key).GetString() is { } s && s.StartsWith("0x")
             ? s[2..] : throw new FormatException($"club.relationships.{key}: expected hex offset"), 16)).ToArray();
-        return new(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11], v[12], v[13]);
+        return new(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11], v[12], v[13])
+        {
+            NameStadium = e.TryGetProperty("nameStadium", out var ns) && ns.GetString() is { } nsText && nsText.StartsWith("0x")
+                ? Convert.ToInt32(nsText[2..], 16) : null,
+        };
     }
 
     internal void Write(Utf8JsonWriter w)
@@ -140,6 +148,7 @@ public sealed record ClubRelationshipOffsets(
                    RivalType, LikesPersonType, DislikesPersonType, ClubKind, PersonKind, TeamKind];
         w.WriteStartObject("relationships");
         for (int i = 0; i < Keys.Length; i++) w.WriteString(Keys[i], $"0x{v[i]:X}");
+        if (NameStadium is { } nameStadium) w.WriteString("nameStadium", $"0x{nameStadium:X}");
         w.WriteEndObject();
     }
 }
