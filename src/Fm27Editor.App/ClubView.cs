@@ -167,10 +167,16 @@ public sealed partial class MainWindow : IClubPanels
     }
 
     // What the club screen asks of the window.
-    IReadOnlyList<ClubSection> VisibleClubSections() =>
-        backend.State.Status == ConnectionStatus.Connected && backend.Session.Profile.YouthCandidates is null
+    IReadOnlyList<ClubSection> VisibleClubSections()
+    {
+        bool connected = backend.State.Status == ConnectionStatus.Connected;
+        IReadOnlyList<ClubSection> sections = connected && backend.Session.Profile.YouthCandidates is null
             ? ClubFieldInfo.Sections.Where(s => s != ClubSection.YouthIntake).ToArray()
             : ClubFieldInfo.Sections;
+        return connected && backend.Session.Profile.TeamTactics is not null
+            ? [.. sections.Where(s => s != ClubSection.Supporters), ClubSection.TacticalUnderstanding, ClubSection.Supporters]
+            : sections;
+    }
 
     void RefreshClubSectionRail()
     {
@@ -584,6 +590,15 @@ public sealed partial class MainWindow : IClubPanels
         IReadOnlyDictionary<ClubField, long> values,
         ClubDraft draft)
     {
+        if (section == ClubSection.TacticalUnderstanding && profile.TeamTactics is not null)
+        {
+            if (orderedTeams.Count > 1) clubEditorPanel.Children.Add(BuildClubTeamSelector(club, orderedTeams, teamAddr));
+            clubEditorPanel.Children.Add(BuildTeamTacticsCard(backend.Session, club, teamAddr)
+                ?? UiKit.Card("Tactical Understanding", new TextBlock { Text = Loc.S("This team's tactics are not available"), Margin = new Thickness(12, 8), Foreground = UiKit.TextSecondary }));
+            clubEditorPanel.Children.Add(BuildTeamCohesionCard(session: backend.Session, club, orderedTeams.FirstOrDefault(t => t.Address == teamAddr)));
+            return;
+        }
+
         var groups = ClubSectionLayout.BuildGroups(section, profile, access, club.Address, teamAddr, values);
         if (groups.Count == 0)
             return;
@@ -591,12 +606,6 @@ public sealed partial class MainWindow : IClubPanels
         if (section == ClubSection.TacticalUnderstanding)
         {
             if (orderedTeams.Count > 1) clubEditorPanel.Children.Add(BuildClubTeamSelector(club, orderedTeams, teamAddr));
-            if (BuildTeamTacticsCard(backend.Session, club, teamAddr) is { } tactics)
-            {
-                clubEditorPanel.Children.Add(tactics);
-                clubEditorPanel.Children.Add(BuildTeamCohesionCard(session: backend.Session, club, orderedTeams.FirstOrDefault(t => t.Address == teamAddr)));
-                return;
-            }
             // FMRTE: the Tactical Understanding card has a Max button that sets every bar to 100; Team Cohesion has its own.
             var max = new Button { Content = Loc.S("Max"), Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Left };
             max.Click += (_, _) =>
@@ -649,21 +658,25 @@ public sealed partial class MainWindow : IClubPanels
         clubEditorPanel.Children.Add(UiKit.TwoColumnMasonry(items, gap: 14));
     }
 
-    /// <summary>The six areas of the team's current tactics, each editable for the whole squad; null when those tactics are unknown.</summary>
+    /// <summary>The team's Tactical Understanding bars, each dragged or typed for the whole squad; null when its tactics are unknown.</summary>
     Control? BuildTeamTacticsCard(GameSession session, ClubEntry club, ulong team)
     {
         var tactics = new TeamTacticalUnderstanding(session.Memory, session.Profile, session.ModuleBase);
         if (!tactics.IsSupported) return null;
         IReadOnlyList<PlayerRecord> squad;
         int[]? values;
-        try { squad = session.ReadSquad(team); values = tactics.Read(team, squad); }
+        int? roles;
+        try { squad = session.ReadSquad(team); values = tactics.Read(team, squad); roles = tactics.ReadRoles(squad); }
         catch (Exception ex) { status.Text = UserMessage.For(ex); return null; }
         if (values is null) return null;
-        var boxes = new TextBox[TeamTacticalUnderstanding.Areas];
+        var refreshers = new List<Action<int[], int?>>();
         void Refresh()
         {
-            if (tactics.Read(team, squad) is not { } now) return;
-            for (int i = 0; i < boxes.Length; i++) boxes[i].Text = now[i].ToString(Inv);
+            if (tactics.Read(team, squad) is { } now)
+            {
+                int? roleNow = tactics.ReadRoles(squad);
+                foreach (var refresh in refreshers) refresh(now, roleNow);
+            }
         }
         void Run(string label, Func<int> write)
         {
@@ -671,43 +684,68 @@ public sealed partial class MainWindow : IClubPanels
             {
                 int changed = 0;
                 backend.Edits.Execute("Club", club.DisplayName, label, () => changed = write());
-                Refresh();
                 status.Text = Loc.F("Tactical understanding: {0} value(s) changed. Continue in FM to see updates.", changed);
             }
             catch (Exception ex) { status.Text = UserMessage.For(ex); }
+            Refresh();
         }
-        var rows = new StackPanel { Spacing = 4, Margin = new Thickness(12, 8) };
-        for (int i = 0; i < boxes.Length; i++)
+        Control Bar(string name, int initial, Func<int, int> write, Func<int[], int?, int?> read)
         {
-            int area = i;
-            string name = PlayerTacticalUnderstanding.AreaNames[area];
-            var box = boxes[area] = new TextBox { Text = values[area].ToString(Inv), Width = 64 };
-            var set = new Button { Content = Loc.S("Set") };
-            set.Click += (_, _) =>
+            var slider = new Slider { Minimum = 0, Maximum = 100, SmallChange = 1, LargeChange = 5, TickFrequency = 1, IsSnapToTickEnabled = true, Value = initial, VerticalAlignment = VerticalAlignment.Center };
+            var box = new TextBox { Text = initial.ToString(Inv), Width = 52, MinWidth = 52, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            int applied = initial;
+            bool syncing = false;
+            void Show(int value)
             {
-                if (!int.TryParse(box.Text, System.Globalization.NumberStyles.Integer, Inv, out int value) || value is < 0 or > 100)
-                {
-                    status.Text = Loc.S("Value is outside the allowed range");
-                    return;
-                }
-                Run(name, () => tactics.Set(team, squad, area, value, session.AllocateGameBlock));
+                syncing = true;
+                slider.Value = value;
+                box.Text = value.ToString(Inv);
+                syncing = false;
+            }
+            void Apply(int value)
+            {
+                if (value == applied) { Show(value); return; }
+                Run(name, () => write(value));
+            }
+            refreshers.Add((now, roleNow) => { if (read(now, roleNow) is { } value) { applied = value; Show(value); } });
+            slider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == Avalonia.Controls.Primitives.RangeBase.ValueProperty && !syncing) box.Text = ((int)slider.Value).ToString(Inv);
             };
-            var row = new DockPanel();
-            DockPanel.SetDock(set, Dock.Right);
-            DockPanel.SetDock(box, Dock.Right);
-            row.Children.Add(set);
+            slider.AddHandler(Avalonia.Input.InputElement.PointerReleasedEvent, (_, _) => Apply((int)slider.Value), Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
+            slider.KeyUp += (_, _) => Apply((int)slider.Value);
+            void Typed()
+            {
+                if (int.TryParse(box.Text, System.Globalization.NumberStyles.Integer, Inv, out int value) && value is >= 0 and <= 100) Apply(value);
+                else { status.Text = Loc.S("Value is outside the allowed range"); Show(applied); }
+            }
+            box.LostFocus += (_, _) => Typed();
+            box.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Enter) { Typed(); e.Handled = true; } };
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("170,*,60"), MinHeight = 32 };
+            var label = new TextBlock { Text = Loc.S(name), FontSize = 13, Foreground = UiKit.TextPrimary, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(slider, 1);
+            Grid.SetColumn(box, 2);
+            box.HorizontalAlignment = HorizontalAlignment.Right;
+            row.Children.Add(label);
+            row.Children.Add(slider);
             row.Children.Add(box);
-            row.Children.Add(new TextBlock { Text = Loc.S(name), FontSize = 13, Foreground = UiKit.TextSecondary, VerticalAlignment = VerticalAlignment.Center });
-            rows.Children.Add(row);
+            return row;
         }
-        var max = new Button { Content = Loc.S("Max"), Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(12, 0, 12, 8) };
-        max.Click += (_, _) => Run("Tactical Understanding", () =>
+        var rows = new StackPanel { Spacing = 2, Margin = new Thickness(12, 8) };
+        void Heading(string text) => rows.Children.Add(new TextBlock { Text = Loc.S(text), FontSize = 12, FontWeight = FontWeight.SemiBold, Foreground = UiKit.TextSecondary, Margin = new Thickness(0, 6, 0, 2) });
+        string? group = null;
+        foreach (var (barGroup, name, list) in TeamTacticalUnderstanding.Bars)
         {
-            int changed = tactics.Maximise(team, squad, session.AllocateGameBlock);
-            var players = new PlayerTacticalUnderstanding(session.Memory, session.Profile, session.ModuleBase);
-            foreach (var player in squad) changed += players.Maximise(player);
-            return changed;
-        });
+            if (barGroup != group) Heading(group = barGroup);
+            rows.Children.Add(Bar(name, values[list], value => tactics.Set(team, squad, list, value, session.AllocateGameBlock), (now, _) => now[list]));
+        }
+        if (roles is { } roleValue)
+        {
+            Heading("Shapes");
+            rows.Children.Add(Bar("Position/Role", roleValue, value => tactics.SetRoles(squad, value), (_, roleNow) => roleNow));
+        }
+        var max = new Button { Content = Loc.S("Max"), Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
+        max.Click += (_, _) => Run("Tactical Understanding", () => tactics.Maximise(team, squad, session.AllocateGameBlock) + tactics.SetRoles(squad, 100));
         rows.Children.Add(max);
         return UiKit.Card("Tactical Understanding", rows);
     }

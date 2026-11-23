@@ -277,8 +277,20 @@ public sealed class GameSession : IDisposable
             ReadGameDate() ?? throw new InvalidOperationException("The in-game date could not be read"));
 
     /// <summary>FMRTE's Tactical Understanding preset: maximum tactical familiarity and maximum team cohesion.</summary>
-    public void TacticalUnderstanding(PlayerRecord player) =>
+    public void TacticalUnderstanding(PlayerRecord player)
+    {
         new PlayerPresetRunner(_memory, Profile, Game.ModuleBase).TacticalUnderstanding(player);
+        var tactics = new TeamTacticalUnderstanding(_memory, Profile, Game.ModuleBase);
+        if (!tactics.IsSupported) return;
+        ulong clubAddress = PlayingClub.Of(_memory, Profile, Game.ModuleBase, player);
+        _tacticClubs ??= LoadClubs(Players.LoadAll());
+        if (_tacticClubs.FirstOrDefault(c => c.Address == clubAddress) is not { } club) return;
+        foreach (var team in club.Teams)
+            if (tactics.TacticOptions(team.Address) is not null && ReadSquad(team.Address).Any(p => p.Address == player.Address))
+                tactics.MaximisePlayer(team.Address, player, AllocateGameBlock);
+    }
+
+    IReadOnlyList<Clubs.ClubEntry>? _tacticClubs;
 
     /// <summary>The club the player plays for (what FMRTE's presets act on), the contract club when that is unknown.</summary>
     ulong CurrentClub(PlayerRecord player) =>

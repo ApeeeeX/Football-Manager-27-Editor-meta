@@ -66,7 +66,9 @@ public static partial class Loc
         m["All Players Interested"] = "Mọi cầu thủ đều quan tâm";
         m["Become Unsackable"] = "Không bị sa thải";
         m["Set"] = "Đặt";
-        m["In Possession Shape"] = "Đội hình khi có bóng";
+        m["This team's tactics are not available"] = "Không đọc được chiến thuật của đội này";
+        m["Shapes"] = "Đội hình";
+        m["Position/Role"] = "Vị trí/Vai trò";
         m["Tactical understanding: {0} value(s) changed. Continue in FM to see updates."] = "Hiểu chiến thuật: đã đổi {0} giá trị. Nhấn Continue trong FM để cập nhật.";
         m["Allow Squad Registration Anytime"] = "Đăng ký đội hình bất cứ lúc nào";
         m["Allow Squad Numbers Anytime"] = "Đổi số áo bất cứ lúc nào";

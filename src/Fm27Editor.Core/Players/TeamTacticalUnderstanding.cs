@@ -14,6 +14,16 @@ public sealed record TeamTacticOffsets(uint ManagersRva, int Entries, int TeamTr
 public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
 {
     public const int Areas = 6;
+
+    /// <summary>The bars in the game's order and the list each one reads. Measured on Steam 27.1.0 macOS, 23/11/2026: lists 0-5
+    /// were written 11, 22, 33, 44, 55, 66 and FMRTE showed Line of Engagement 11, Pressing Intensity 22, Pressing Trap 33,
+    /// Passing Style 44, Build Up 55 and Chance Creation 66.</summary>
+    public static readonly (string Group, string Name, int List)[] Bars =
+    [
+        ("In Possession", "Passing Style", 3), ("In Possession", "Build Up", 4), ("In Possession", "Chance Creation", 5),
+        ("Out of Possession", "Line of Engagement", 0), ("Out of Possession", "Pressing Intensity", 1), ("Out of Possession", "Pressing Trap", 2),
+    ];
+
     const int MaxRows = 20, MaxOption = 20, ValueMask = 0x3FFF, OptionShift = 14, OptionMask = 0x3F, MaxManagers = 64, MaxTactics = 3, MaxDepth = 64;
 
     public bool IsSupported => profile.TeamTactics is not null && profile.TacticalUnderstanding is not null;
@@ -122,6 +132,58 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
         int changed = 0;
         for (int area = 0; area < Areas; area++) changed += Set(team, squad, area, 100, allocate);
         return changed;
+    }
+
+    /// <summary>Squad average (0-100) of the Position/Role rows the players already hold; null when none has any.</summary>
+    public int? ReadRoles(IReadOnlyList<PlayerRecord> squad)
+    {
+        long total = 0; int count = 0;
+        foreach (var player in squad)
+            foreach (var (at, _) in RoleRows(Holder(player)))
+            {
+                total += BitConverter.ToUInt16(memory.Read(at, 2));
+                count++;
+            }
+        return count == 0 ? null : (int)Math.Round(total / (double)count / 100);
+    }
+
+    /// <summary>Sets the Position/Role rows the players already hold. A role a player has no row for is not added.</summary>
+    public int SetRoles(IReadOnlyList<PlayerRecord> squad, int percent)
+    {
+        if (percent is < 0 or > 100) throw new ArgumentOutOfRangeException(nameof(percent));
+        var want = BitConverter.GetBytes((ushort)(percent * 100));
+        int changed = 0;
+        foreach (var player in squad)
+            foreach (var (at, _) in RoleRows(Holder(player)))
+            {
+                if (memory.Read(at, 2).AsSpan().SequenceEqual(want)) continue;
+                Write(at, want);
+                changed++;
+            }
+        return changed;
+    }
+
+    /// <summary>One player's share of the game's Maximise: the team's tactic options at 100%, adding missing rows.</summary>
+    public int MaximisePlayer(ulong team, PlayerRecord player, Func<int, ulong> allocate)
+    {
+        var tactics = TacticOptions(team);
+        ulong holder = Holder(player);
+        if (tactics is null || holder == 0) return 0;
+        int changed = 0;
+        for (int area = 0; area < Areas; area++)
+            foreach (int option in tactics.Select(t => t[area]).Distinct())
+                if (SetRow(holder + (ulong)(area * Stride), option, 10_000, allocate)) changed++;
+        return changed;
+    }
+
+    IEnumerable<(ulong At, int Index)> RoleRows(ulong holder)
+    {
+        if (holder == 0) yield break;
+        var o = profile.TacticalUnderstanding!;
+        ulong begin = memory.ReadUInt64(holder + (ulong)o.RoleVector), end = memory.ReadUInt64(holder + (ulong)o.RoleVector + 8);
+        if (begin == 0 || end <= begin || (end - begin) % (ulong)o.RoleEntry != 0 || (end - begin) / (ulong)o.RoleEntry > PlayerTacticalUnderstanding.MaxItems) yield break;
+        int count = (int)((end - begin) / (ulong)o.RoleEntry);
+        for (int i = 0; i < count; i++) yield return (begin + (ulong)(i * o.RoleEntry + o.RoleValue), i);
     }
 
     int Stride => profile.TacticalUnderstanding!.Stride;
