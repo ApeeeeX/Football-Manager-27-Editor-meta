@@ -191,7 +191,7 @@ static class UiKit
             Background = SurfaceHeader,
             BorderBrush = BorderSubtle,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            MinHeight = 30,
+            MinHeight = 28,
             Padding = new Thickness(10, 4),
             Child = headerDock,
         };
@@ -352,7 +352,7 @@ static class UiKit
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(0),
-            MinHeight = 88,
+            MinHeight = 76,
             ClipToBounds = true,
             Child = new Grid
             {
@@ -360,7 +360,7 @@ static class UiKit
                 Children =
                 {
                     new Border { Background = Accent },
-                    new Border { Padding = new Thickness(16, 12, 16, 12), Child = dock, [Grid.ColumnProperty] = 1 },
+                    new Border { Padding = new Thickness(14, 10, 14, 10), Child = dock, [Grid.ColumnProperty] = 1 },
                 },
             },
         };

@@ -136,7 +136,7 @@ internal sealed class NationScreen(IScreenHost host)
             var line = new DockPanel { MinHeight = 25, LastChildFill = true };
             DockPanel.SetDock(control, Dock.Right);
             line.Children.Add(control);
-            line.Children.Add(new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontSize = 13, Foreground = UiKit.TextSecondary, VerticalAlignment = VerticalAlignment.Center });
+            line.Children.Add(new TextBlock { Text = label, TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontSize = 13, Foreground = UiKit.TextSecondary, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
             stack.Children.Add(new Border { Background = idx++ % 2 == 1 ? UiKit.SurfaceZebra : Brushes.Transparent, Padding = new Thickness(10, 2), Child = line });
         }
         return UiKit.Card(title, stack);

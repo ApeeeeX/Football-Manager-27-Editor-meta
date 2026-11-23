@@ -45,6 +45,8 @@ public sealed class CompetitionRepository(IProcessMemory memory, OffsetProfile p
         else
         {
             var raw = memory.Read(begin, (int)(end - begin));
+            if (memory is ReadAheadMemory ram)
+                ram.Prefetch(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(raw), ObjectStride);
             for (int i = 0; i < raw.Length; i += 8)
                 if (Reload(BitConverter.ToUInt64(raw, i)) is { } r) result.Add(r);
         }

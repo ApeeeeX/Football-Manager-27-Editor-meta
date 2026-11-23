@@ -190,14 +190,23 @@ public sealed class GoldenGenerationHook(IProcessMemory memory, ICodePatchHost? 
         && at[8..original.Length].SequenceEqual(original.AsSpan(8));
 
     /// <summary>The site: the one place in the module's code holding <see cref="OriginalPattern"/>, patched or not.</summary>
-    public ulong FindSite()
+    public ulong FindSite() => FindSite(null, null);
+
+    /// <summary>Finds the site using an optional pre-captured <c>__TEXT</c> snapshot on ARM64 or a verified site hint.</summary>
+    public ulong FindSite(CodeGen.Arm64CodeSnapshot? snapshot, ulong? hintedSite = null)
     {
         if (site is { } known) return known;
         if (profile.IsArm64)
+        {
+            var pattern = Arm64Pattern();
+            if (hintedSite is { } hint &&
+                Arm64SiteFinder.TryVerifyAt(memory, hint, pattern, Arm64IsBranchWord, patchedFrom: 2, Accept))
+                return (site = hint).Value;
             // A patched site starts with the B and the NOP that replaced the two stolen loads, so the match resumes at
             // the third word.
             return (site = Arm64SiteFinder.Find(memory, moduleBase, (ulong)moduleSize, Feature,
-                Arm64Pattern(), Arm64IsBranchWord, patchedFrom: 2, Accept)).Value;
+                pattern, Arm64IsBranchWord, patchedFrom: 2, Accept, snapshot)).Value;
+        }
         var original = OriginalPattern(profile);
         var hits = new List<ulong>();
         foreach (var (start, size) in CodeSections())

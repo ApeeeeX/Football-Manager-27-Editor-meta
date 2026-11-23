@@ -38,14 +38,14 @@ using Fm27Editor.Core.Presets;
 
 namespace Fm27Editor.Core.Memory;
 
-public sealed class MacHelperProcessMemory : IUnreadablePagesAreNotHeap, IMacMemory, IMemoryRegions, IRemoteAllocator, IGameHeapAllocator, IMemoryWriteObserver, IMemoryAllocationObserver, IGameHeapVerifier, IWriteGate, ICodePatchHost, IScatterReadMemory, IDisposable
+public sealed class MacHelperProcessMemory : IUnreadablePagesAreNotHeap, IMacMemory, IMemoryRegions, IRemoteAllocator, IGameHeapAllocator, IMemoryWriteObserver, IMemoryAllocationObserver, IGameHeapVerifier, IWriteGate, ICodePatchHost, IScatterReadMemory, IVtableHeapScanner, IDisposable
 {
     private const string SocketPath = "/var/run/fm27editor.sock";
 
     /// <summary>Whether the privileged helper is installed and listening; without it there is no fallback for a
     /// process this one may not open itself.</summary>
     public static bool Available => File.Exists(SocketPath);
-    private const int ReceiveTimeoutMs = 30000;
+    internal const int ReceiveTimeoutMs = 30000;
 
     private const int VmProtRead = 0x01, VmProtWrite = 0x02, VmProtExecute = 0x04, VmProtCopy = 0x10;
     private const int VmProtReadWrite = VmProtRead | VmProtWrite;
@@ -70,6 +70,7 @@ public sealed class MacHelperProcessMemory : IUnreadablePagesAreNotHeap, IMacMem
         ReadMany = 13,
         RemoteCalloc = 14,
         HeapCheck = 15,
+        ScanVtables = 16,
     }
 
     static readonly HashSet<int> MallocUserTags = [1, 2, 3, 4, 7, 8, 9, 11, 12, 13];
@@ -81,6 +82,7 @@ public sealed class MacHelperProcessMemory : IUnreadablePagesAreNotHeap, IMacMem
     private bool _disposed;
     private bool? _nativeScatter;
     private bool? _nativeHeapCheck;
+    private bool? _nativeScanVtables;
 
     // The write observer events are set by the edit history; the helper fires them through the client.
     public Action<ulong, byte[], byte[]>? OnWrite { get; set; }
@@ -226,6 +228,86 @@ public sealed class MacHelperProcessMemory : IUnreadablePagesAreNotHeap, IMacMem
                 _handle = 0;
                 throw;
             }
+        }
+    }
+
+    public IReadOnlyList<HeapVtableMatch>? TryScanVtables(
+        IReadOnlyList<MemoryRegion> regions,
+        ReadOnlySpan<ulong> vtables,
+        bool tolerateUnreadable,
+        bool unreadablePagesAreNotHeap,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (vtables.Length == 0 || regions.Count == 0) return [];
+        if (vtables.Length > 32 || regions.Count > 262144) return null;
+        lock (_gate)
+        {
+            if (_nativeScanVtables == false || _socket == null || _disposed) return null;
+            byte[] response;
+            try
+            {
+                int payloadLen = 1 + 4 + 1 + 4 + vtables.Length * 8 + 4 + regions.Count * 16;
+                var frame = new byte[4 + payloadLen];
+                BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)payloadLen);
+                int at = 4;
+                frame[at++] = (byte)Op.ScanVtables;
+                BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(at), _handle); at += 4;
+                frame[at++] = (byte)((tolerateUnreadable ? 1 : 0) | (unreadablePagesAreNotHeap ? 2 : 0));
+                BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(at), vtables.Length); at += 4;
+                for (int i = 0; i < vtables.Length; i++)
+                {
+                    BinaryPrimitives.WriteUInt64LittleEndian(frame.AsSpan(at), vtables[i]);
+                    at += 8;
+                }
+                BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(at), regions.Count); at += 4;
+                for (int i = 0; i < regions.Count; i++)
+                {
+                    BinaryPrimitives.WriteUInt64LittleEndian(frame.AsSpan(at), regions[i].Start); at += 8;
+                    BinaryPrimitives.WriteUInt64LittleEndian(frame.AsSpan(at), regions[i].Size); at += 8;
+                }
+                SendExact(frame);
+
+                Span<byte> word = stackalloc byte[4];
+                ReceiveExact(word);
+                int length = BinaryPrimitives.ReadInt32LittleEndian(word);
+                if (length < 4 || length > 256 * 1024 * 1024)
+                    throw new MemoryAccessException($"Helper returned an implausible ScanVtables response length {length}");
+                response = new byte[length];
+                ReceiveExact(response);
+            }
+            catch (Exception ex) when (ex is SocketException or MemoryAccessException or ObjectDisposedException)
+            {
+                _socket?.Dispose();
+                _socket = null;
+                _handle = 0;
+                throw;
+            }
+
+            int status = ReadInt32(response, 0);
+            if (status != 0)
+            {
+                if (_nativeScanVtables is null && response.Length >= 8 && ReadInt32(response, 4) == 14)
+                {
+                    _nativeScanVtables = false;
+                    return null;
+                }
+                throw new MemoryAccessException(ReadMessage(response));
+            }
+            if (response.Length < 8)
+                throw new MemoryAccessException("Malformed ScanVtables response");
+            int count = ReadInt32(response, 4);
+            if (count < 0 || response.Length != 8 + count * 16)
+                throw new MemoryAccessException("Malformed ScanVtables result count");
+            _nativeScanVtables = true;
+            var matches = new HeapVtableMatch[count];
+            int pos = 8;
+            for (int i = 0; i < count; i++)
+            {
+                matches[i] = new HeapVtableMatch(ReadUInt64(response, pos), ReadUInt64(response, pos + 8));
+                pos += 16;
+            }
+            return matches;
         }
     }
 

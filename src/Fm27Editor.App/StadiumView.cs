@@ -54,12 +54,29 @@ internal sealed class StadiumScreen(IScreenHost host)
 
     protected override IReadOnlyList<StadiumRow> LoadRows(GameSession session, LoadedGameData? data)
     {
-        using var reads = new BulkReadScope(session.Memory);
-        var writer = new StadiumWriter(reads.Memory, session.Profile, session.ModuleBase);
-        return (data?.Stadiums ?? session.Stadiums.LoadAll())
-            .Select(s => new StadiumRow(s, s.DisplayName, s.Id, s.Owner?.DisplayName ?? "",
-                (int)(writer.ReadFields(s.Address).TryGetValue(StadiumField.Capacity, out var c) ? c : 0)))
-            .OrderByDescending(r => r.Capacity).ToList();
+        BulkReadScope? reads = null;
+        StadiumWriter? writer = null;
+        try
+        {
+            return (data?.Stadiums ?? session.Stadiums.LoadAll())
+                .Select(s =>
+                {
+                    int capacity;
+                    if (s.Capacity is { } cached)
+                    {
+                        capacity = cached;
+                    }
+                    else
+                    {
+                        reads ??= new BulkReadScope(session.Memory);
+                        writer ??= new StadiumWriter(reads.Memory, session.Profile, session.ModuleBase);
+                        capacity = (int)(writer.ReadFields(s.Address).TryGetValue(StadiumField.Capacity, out var c) ? c : 0);
+                    }
+                    return new StadiumRow(s, s.DisplayName, s.Id, s.Owner?.DisplayName ?? "", capacity);
+                })
+                .OrderByDescending(r => r.Capacity).ToList();
+        }
+        finally { reads?.Dispose(); }
     }
 
     protected override bool Matches(StadiumRow row, string q) =>

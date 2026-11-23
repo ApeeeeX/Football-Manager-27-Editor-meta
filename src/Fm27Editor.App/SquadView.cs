@@ -74,7 +74,7 @@ public sealed partial class MainWindow
             ? () => orderedTeams.Skip(1).SelectMany(t => SquadAdapter.ReadSquad(backend.Session, t.Address, allLoadedPlayers)).DistinctBy(p => p.Address).ToList()
             : null;
         var layoutGrid = BuildSquadGridAndActions(getSquad, isNation: false, out refreshSquad, youthPlayers, club.Address);
-        clubEditorPanel.Children.Add(new StackPanel { Margin = new Thickness(12, 0, 0, 0), Children = { layoutGrid } });
+        clubEditorPanel.Children.Add(new Border { Margin = new Thickness(8, 0, 0, 0), Child = layoutGrid });
         return true;
     }
 
@@ -142,12 +142,12 @@ public sealed partial class MainWindow
         var excluded = new HashSet<ulong>();
         Action? updateSelection = null;
         ToolGrid.AddTick<SquadPlayerRow>(squadGrid, excluded, r => r.Player.Address, () => squadRows, () => updateSelection?.Invoke());
-        squadGrid.Columns.Add(NumCol("#", r => r.DisplayNumber, 37, "Squad Number"));
+        squadGrid.Columns.Add(NumCol("#", r => r.DisplayNumber, 30, "Squad Number"));
 
         squadGrid.Columns.Add(new DataGridTemplateColumn
         {
             Header = Header("Inf", "Status / Injuries / Bans"),
-            Width = new DataGridLength(48),
+            Width = new DataGridLength(40),
             CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
             {
                 var tb = new TextBlock
@@ -157,6 +157,7 @@ public sealed partial class MainWindow
                     FontWeight = FontWeight.Bold,
                     VerticalAlignment = VerticalAlignment.Center,
                     HorizontalAlignment = HorizontalAlignment.Center,
+                    TextWrapping = TextWrapping.NoWrap,
                     TextTrimming = TextTrimming.None,
                 };
                 if (!string.IsNullOrEmpty(row.InfTooltip))
@@ -165,116 +166,22 @@ public sealed partial class MainWindow
             }),
         });
 
-        squadGrid.Columns.Add(new DataGridTemplateColumn
-        {
-            Header = Header("Name", "Player Name", HorizontalAlignment.Left),
-            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-            MinWidth = 116,
-            CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
-            {
-                var tb = new TextBlock
-                {
-                    Text = row.DisplayName,
-                    FontWeight = FontWeight.Medium,
-                    Foreground = Brush("#F1F5F9"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Margin = new Thickness(4, 0, 4, 0),
-                };
-                ToolTip.SetTip(tb, row.DisplayName);
-                return tb;
-            }),
-        });
-
-        squadGrid.Columns.Add(new DataGridTemplateColumn
-        {
-            Header = Header("Pos", "Positions", HorizontalAlignment.Left),
-            Width = new DataGridLength(108),
-            CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
-            {
-                var tb = new TextBlock
-                {
-                    Text = row.FormattedPositions,
-                    Foreground = Brush("#C4B5FD"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Margin = new Thickness(4, 0, 4, 0),
-                };
-                ToolTip.SetTip(tb, row.FormattedPositions);
-                return tb;
-            }),
-        });
-
+        squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Name", r => r.DisplayName, 1.5, 118, "Player Name", "#F1F5F9", bold: true));
+        squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Pos", r => r.FormattedPositions, 0.9, 82, "Positions", "#C4B5FD"));
         if (isNation)
-        {
-            squadGrid.Columns.Add(new DataGridTemplateColumn
-            {
-                Header = Header("Club", "Club", HorizontalAlignment.Left),
-                Width = new DataGridLength(126),
-                CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
-                {
-                    var tb = new TextBlock
-                    {
-                        Text = row.DisplayClub,
-                        Foreground = Brush("#CBD5E1"),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        Margin = new Thickness(4, 0, 4, 0),
-                    };
-                    ToolTip.SetTip(tb, row.DisplayClub);
-                    return tb;
-                }),
-            });
-        }
+            squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Club", r => r.DisplayClub, 1.0, 96, "Club"));
         else
-        {
-            squadGrid.Columns.Add(new DataGridTemplateColumn
-            {
-                Header = Header("Nat", "Nationality", HorizontalAlignment.Left),
-                Width = new DataGridLength(83),
-                CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
-                {
-                    var tb = new TextBlock
-                    {
-                        Text = row.DisplayNat,
-                        Foreground = Brush("#CBD5E1"),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        Margin = new Thickness(4, 0, 4, 0),
-                    };
-                    ToolTip.SetTip(tb, row.DisplayNat);
-                    return tb;
-                }),
-            });
-        }
+            squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Nat", r => r.DisplayNat, 0.8, 72, "Nationality"));
 
-        squadGrid.Columns.Add(NumCol("CA", r => r.DisplayCa, 41, "Current Ability"));
-        squadGrid.Columns.Add(NumCol("PA", r => r.DisplayPa, 41, "Potential Ability"));
-        squadGrid.Columns.Add(NumCol("Age", r => r.DisplayAge, 41, "Age"));
-        squadGrid.Columns.Add(NumCol("Cond", r => r.DisplayCondition, 57, "Condition (0–10000)"));
+        squadGrid.Columns.Add(NumCol("CA", r => r.DisplayCa, 36, "Current Ability"));
+        squadGrid.Columns.Add(NumCol("PA", r => r.DisplayPa, 36, "Potential Ability"));
+        squadGrid.Columns.Add(NumCol("Age", r => r.DisplayAge, 36, "Age"));
+        squadGrid.Columns.Add(NumCol("Cond", r => r.DisplayCondition, 48, "Condition (0–10000)"));
 
         if (!isNation)
         {
-            squadGrid.Columns.Add(new DataGridTemplateColumn
-            {
-                Header = Header("Price", "Asking Price (£)", HorizontalAlignment.Right),
-                Width = new DataGridLength(97),
-                CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
-                {
-                    var tb = new TextBlock
-                    {
-                        Text = row.DisplayAskingPrice,
-                        Foreground = Brush("#F1F5F9"),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        TextAlignment = TextAlignment.Right,
-                        Margin = new Thickness(0, 0, 5, 0),
-                    };
-                    if (!string.IsNullOrEmpty(row.DisplayAskingPrice))
-                        ToolTip.SetTip(tb, $"£{row.DisplayAskingPrice}");
-                    return tb;
-                }),
-            });
+            squadGrid.Columns.Add(ToolGrid.Number<SquadPlayerRow>("Price", r => r.DisplayAskingPrice, 86, "Asking Price (£)",
+                row => string.IsNullOrEmpty(row.DisplayAskingPrice) ? null : $"£{row.DisplayAskingPrice}"));
         }
 
         squadGrid.DoubleTapped += (_, e) =>
@@ -352,8 +259,7 @@ public sealed partial class MainWindow
         refreshSquad = RefreshSquadLocal;
         LoadSquadRows(keepSelection: false);
 
-        var actionsHost = new Border();
-        actionsHost.Child = CreatePlayerActionsPanel(
+        var actionsCard = CreatePlayerActionsPanel(
             player: null,
             isSquadMode: true,
             getSquadPlayers: () => currentSquadPlayers,
@@ -370,19 +276,7 @@ public sealed partial class MainWindow
             updateSelection?.Invoke();
         };
 
-        var layoutGrid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-        };
-
-        Grid.SetColumn(squadGrid, 0);
-        layoutGrid.Children.Add(squadGrid);
-
-        actionsHost.Margin = new Thickness(10, 0, 0, 0);
-        Grid.SetColumn(actionsHost, 1);
-        layoutGrid.Children.Add(actionsHost);
-
-        return layoutGrid;
+        return ToolGrid.WithTools(squadGrid, actionsCard);
     }
 
     async void OpenPlayerFromSquad(PlayerRecord player)

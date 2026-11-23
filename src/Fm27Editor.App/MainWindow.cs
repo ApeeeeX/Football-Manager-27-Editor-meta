@@ -186,6 +186,7 @@ public sealed partial class MainWindow : Window
         };
         status.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty && e.NewValue is string t && t.Length > 0) FlightRecorder.Current?.Log("status", t); };
         Opened += (_, _) => _ = NotifyIfUpdateAsync();
+        Opened += (_, _) => _ = OfferPluginSetupAsync(refused: false);
         _ = graphics.LoadAsync();
         Opened += async (_, _) => { if (graphics.Folder is null) await ChooseGraphicsAsync(); };
 
@@ -928,7 +929,11 @@ public sealed partial class MainWindow : Window
                     loaded = true;
                 }
             }
-            else { gameDateBadge.IsVisible = false; status.Text = Loc.S(backend.State.Message); }
+            else
+            {
+                gameDateBadge.IsVisible = false; status.Text = Loc.S(backend.State.Message);
+                if (backend.State.Message.Contains("task_for_pid", StringComparison.Ordinal)) _ = OfferPluginSetupAsync(refused: true);
+            }
             if (report.Errors.Count > 0) status.Text = string.Join("; ", report.Errors);
             else if (backend.FreezeError is { } error) status.Text = Loc.F("Freezer unavailable: {0}", error);
         }
@@ -1005,22 +1010,31 @@ public sealed partial class MainWindow : Window
         {
             DataGridLength width = c.Title switch
             {
-                "Name" => new DataGridLength(1, DataGridLengthUnitType.Star),
-                "Age" => new DataGridLength(83),
-                "CA" => new DataGridLength(83),
-                "PA" => new DataGridLength(83),
-                "Position" => new DataGridLength(173),
-                "Club" => new DataGridLength(207),
-                "Nationality" => new DataGridLength(178),
-                "Asking Price" => new DataGridLength(167),
-                _ => new DataGridLength(78),
+                "Name" => new DataGridLength(1.5, DataGridLengthUnitType.Star),
+                "Age" => new DataGridLength(48),
+                "CA" => new DataGridLength(48),
+                "PA" => new DataGridLength(48),
+                "Position" => new DataGridLength(0.9, DataGridLengthUnitType.Star),
+                "Club" => new DataGridLength(1.1, DataGridLengthUnitType.Star),
+                "Nationality" => new DataGridLength(0.9, DataGridLengthUnitType.Star),
+                "Asking Price" => new DataGridLength(118),
+                _ => new DataGridLength(72),
+            };
+            double minWidth = c.Title switch
+            {
+                "Name" => 130,
+                "Club" => 110,
+                "Position" or "Nationality" => 95,
+                "Asking Price" => 90,
+                "Age" or "CA" or "PA" => 42,
+                _ => 50,
             };
             var col = new DataGridTextColumn
             {
                 Header = Loc.S(c.Title),
                 Binding = c.Title == "Asking Price" ? new Binding(c.Binding) { StringFormat = "N0" } : new Binding(c.Binding),
                 Width = width,
-                MinWidth = c.Title == "Name" ? 135 : 54,
+                MinWidth = minWidth,
             };
             if (c.Title is "Age" or "CA" or "PA" or "Asking Price") col.CellStyleClasses.Add("numeric");
             grid.Columns.Add(col);
@@ -1032,8 +1046,8 @@ public sealed partial class MainWindow : Window
             grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = "RCA",
-                Width = new DataGridLength(68),
-                MinWidth = 54,
+                Width = new DataGridLength(56),
+                MinWidth = 46,
                 CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) => new TextBlock
                 {
                     Text = p is null ? "" : ScoutingMetrics.Rca(p).ToString(Inv),
@@ -1046,8 +1060,8 @@ public sealed partial class MainWindow : Window
             grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = Loc.S("Best Role"),
-                Width = new DataGridLength(130),
-                MinWidth = 100,
+                Width = new DataGridLength(112),
+                MinWidth = 92,
                 CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) =>
                 {
                     var text = "";
@@ -1060,6 +1074,7 @@ public sealed partial class MainWindow : Window
                     {
                         Text = text,
                         VerticalAlignment = VerticalAlignment.Center,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
                         Margin = new Thickness(8, 0),
                     };
                 })
@@ -1068,8 +1083,8 @@ public sealed partial class MainWindow : Window
             grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = Loc.S("Personality"),
-                Width = new DataGridLength(145),
-                MinWidth = 110,
+                Width = new DataGridLength(0.85, DataGridLengthUnitType.Star),
+                MinWidth = 95,
                 CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) =>
                 {
                     var classified = p is null ? null : ScoutingMetrics.Personality(p);
@@ -1077,6 +1092,7 @@ public sealed partial class MainWindow : Window
                     {
                         Text = classified is null ? "" : Loc.S(classified.Name),
                         VerticalAlignment = VerticalAlignment.Center,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
                         Margin = new Thickness(8, 0),
                         Foreground = classified?.IsNegative == true ? Brush("#F87171") : UiKit.TextPrimary,
                     };
@@ -1453,16 +1469,7 @@ public sealed partial class MainWindow : Window
             key => actions.IsVisible = key == "Information", playerTab?.Rail, this);
         pendingSection = null;
         PublishSections(player);
-        var bodyGrid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        Grid.SetColumn(sectionHost, 0);
-        bodyGrid.Children.Add(sectionHost);
-        actions.Margin = new Thickness(6, 0, 0, 0);
-        Grid.SetColumn(actions, 1);
-        bodyGrid.Children.Add(actions);
+        var bodyGrid = ToolGrid.WithTools(sectionHost, actions);
         editor.Children.Add(bodyGrid);
         HookPlayerActions(player);
     }
@@ -1480,7 +1487,7 @@ public sealed partial class MainWindow : Window
             rowsPanel.Children.Add(new Border
             {
                 Background = rowIndex++ % 2 == 1 ? UiKit.SurfaceZebra : Brushes.Transparent,
-                Padding = new Thickness(4, 1, 4, 1),
+                Padding = new Thickness(6, 2, 5, 2),
                 Child = row
             });
         return UiKit.Card(title, rowsPanel, customTitle: customHeader, rightHeader: rightHeader);
@@ -1489,12 +1496,16 @@ public sealed partial class MainWindow : Window
     /// <summary>One attribute row: the label on the left, the value control docked right.</summary>
     internal static Control AttributeRow(string label, Control value)
     {
-        var line = new DockPanel { MinHeight = 24, LastChildFill = true };
+        var line = new DockPanel { MinHeight = 23, LastChildFill = true };
         var text = new TextBlock
         {
-            Text = label, FontSize = 13, Foreground = Brush("#CBD5E1"),
-            VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap,
+            Text = label, FontSize = 12, Foreground = Brush("#CBD5E1"),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 0, 5, 0),
         };
+        if (!string.IsNullOrEmpty(label)) ToolTip.SetTip(text, label);
         DockPanel.SetDock(value, Dock.Right);
         line.Children.Add(value);
         line.Children.Add(text);
@@ -1536,9 +1547,10 @@ public sealed partial class MainWindow : Window
 
     static TextBox CreateRatingInput() => new()
     {
-        Width = 28, MinWidth = 0, MaxWidth = 28, Height = 20, MinHeight = 20,
-        HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(2, 0),
-        FontSize = 13, FontWeight = FontWeight.Bold,
+        Width = 26, MinWidth = 0, MaxWidth = 26, Height = 20, MinHeight = 20,
+        CornerRadius = new CornerRadius(3),
+        HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(1, 0),
+        FontSize = 12, FontWeight = FontWeight.Bold,
         HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
     };
 
@@ -1780,7 +1792,7 @@ public sealed partial class MainWindow : Window
 
     Control FieldControl(FieldDescriptor<PlayerRecord> field, PlayerRecord player, bool compact = false, Action<int>? onChanged = null, string? labelOverride = null)
     {
-        var line = new DockPanel { MinHeight = 24, LastChildFill = true };
+        var line = new DockPanel { MinHeight = 23, LastChildFill = true };
         string resolvedLabel = labelOverride is not null
             ? Loc.S(labelOverride)
             : compact
@@ -1789,13 +1801,15 @@ public sealed partial class MainWindow : Window
         var label = new TextBlock
         {
             Text = resolvedLabel,
-            FontSize = 13,
+            FontSize = 12,
             Foreground = Brush("#CBD5E1"),
             VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 2, 6, 2),
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 0, 5, 0),
             IsVisible = resolvedLabel.Length > 0,
         };
+        if (resolvedLabel.Length > 0) ToolTip.SetTip(label, resolvedLabel);
         var session = backend.Session;
         if (field.Write is null || !(session.CanWrite ||
             field.Id == nameof(PlayerAttribute.Passing) && session.CanEdit(VerifiedWrite.Passing)))

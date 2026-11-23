@@ -59,6 +59,8 @@ public sealed class PlayerReader(IProcessMemory memory, OffsetProfile profile)
             DateOfBirth = Date(I16(obj, f.DateOfBirth), I16(obj, f.DateOfBirth + 2)),
             Gender = GenderReader.FromPlayerBytes(obj, profile.Relations),
             Contract = contract,
+            PlayingTeamAddress = playingTeam,
+            ContractTeamAddress = contractTeam,
             Nationality = profile.Nation is { } nat ? ReadNation(U64(obj, nat.PlayerNation), nat) : null,
             Division = division,
             AskingPrice = ReadDirect(PlayerField.AskingPrice, obj),

@@ -10,7 +10,7 @@ namespace Fm27Editor.Core.Players;
 /// <summary>Portable freeze data: IDs and values only, never addresses from a previous session.</summary>
 public sealed record SavedFrozenPlayer(int Id, FrozenAttribute[] Fields);
 public sealed record SavedFrozenClub(int Id, long Balance, FreezeMode Mode);
-public sealed record SavedFrozenStaff(int Id, FrozenStaffAttribute[] Fields);
+public sealed record SavedFrozenStaff(int Id, FrozenStaffAttribute[] Fields, short? CurrentAbility = null);
 public sealed record SavedFreezes(SavedFrozenPlayer[] Players, SavedFrozenClub[] Clubs, SavedFrozenStaff[]? Staff = null);
 
 [JsonSerializable(typeof(Dictionary<string, SavedFreezes>))]
@@ -34,7 +34,7 @@ public static class FreezeStore
     public static SavedFreezes Snapshot(IEnumerable<FrozenPlayer> players, IEnumerable<ClubBalanceFreezer> clubs, IEnumerable<FrozenStaff>? staff = null) =>
         new(players.Select(p => new SavedFrozenPlayer(p.Id, p.Fields.ToArray())).ToArray(),
             clubs.Select(c => new SavedFrozenClub(c.Id, c.Value, c.Mode)).ToArray(),
-            (staff ?? []).Select(s => new SavedFrozenStaff(s.Id, s.Fields.ToArray())).ToArray());
+            (staff ?? []).Select(s => new SavedFrozenStaff(s.Id, s.Fields.ToArray(), s.CurrentAbility)).ToArray());
 
     public static SavedFreezes Load(string path, string key)
     {
@@ -82,7 +82,7 @@ public static class FreezeStore
         {
             foreach (var s in saved.Staff)
                 if (staffIds.TryGetValue(s.Id, out var found) && found.Length == 1)
-                    restoredStaff.Add(new FrozenStaff(s.Id, found[0].Address, found[0].StaffAddress, s.Fields));
+                    restoredStaff.Add(new FrozenStaff(s.Id, found[0].Address, found[0].StaffAddress, s.Fields, s.CurrentAbility));
         }
         return (restoredPlayers, restoredClubs, restoredStaff);
     }

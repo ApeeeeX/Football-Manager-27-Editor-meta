@@ -6,11 +6,19 @@ namespace Fm27Editor.Core.Staff;
 
 public enum BackroomDepartment { Coaching, Recruitment, Medical }
 
-public sealed record BackroomTeamPlan(IReadOnlyList<StaffAttributeMassChange> Changes, IReadOnlyList<(StaffRecord Staff, string Reason)> Skipped);
+/// <summary>One raise of CA or PA to the maximum.</summary>
+public sealed record BackroomAbilityChange(StaffRecord Staff, bool Potential, int Before, int After);
 
-/// <summary>Raises existing club staff to role-specific minimums without changing their job or contract.</summary>
+public sealed record BackroomTeamPlan(IReadOnlyList<StaffAttributeMassChange> Changes, IReadOnlyList<(StaffRecord Staff, string Reason)> Skipped)
+{
+    public IReadOnlyList<BackroomAbilityChange> Abilities { get; init; } = [];
+}
+
+/// <summary>Raises one team's staff to role-specific minimums and CA/PA 200 without changing their job or contract. Never lowers a value.</summary>
 public static class BackroomTeam
 {
+    const int MaxAbility = 200;
+
     sealed record Preset(BackroomDepartment Department, StaffAttribute[] Primary, StaffAttribute[] Secondary);
 
     static readonly Preset Manager = new(BackroomDepartment.Coaching, [PeopleManagement, TacticalKnowledge, TacticalAttacking], [Authority, Motivating, JudgingPlayerAbility]);
@@ -47,13 +55,22 @@ public static class BackroomTeam
 
     public static BackroomDepartment? DepartmentOf(StaffRecord staff) => FindPreset(staff)?.Department;
 
-    public static BackroomTeamPlan Plan(IEnumerable<StaffRecord> staff, ulong club, BackroomDepartment? department, StaffWriter writer)
+    /// <summary>The head coach of the first team is left alone; the managers of the second and third teams are not.
+    /// A manager whose team cannot be told apart from the first team counts as its head coach.</summary>
+    public static bool IsEligible(StaffRecord staff, ulong firstTeam) =>
+        FindPreset(staff) is not null &&
+        !(staff.JobCode is 16 or 144 && (firstTeam == 0 || staff.TeamAddress == 0 || staff.TeamAddress == firstTeam));
+
+    public static BackroomTeamPlan Plan(IEnumerable<StaffRecord> staff, ulong club, BackroomDepartment? department, StaffWriter writer,
+        ulong? team = null, ulong firstTeam = 0)
     {
         var changes = new List<StaffAttributeMassChange>();
         var skipped = new List<(StaffRecord, string)>();
+        var abilities = new List<BackroomAbilityChange>();
         foreach (var person in staff.Where(person => person.Club?.Address == club && person.Id > 0).DistinctBy(person => person.Id))
         {
-            if (FindPreset(person) is not { } preset || (department.HasValue && preset.Department != department)) continue;
+            if (team is { } only && person.TeamAddress != only) continue;
+            if (!IsEligible(person, firstTeam) || FindPreset(person) is not { } preset || (department.HasValue && preset.Department != department)) continue;
             var ratings = preset.Primary.Select(a => (Attribute: a, Minimum: 20)).Concat(preset.Secondary.Select(a => (Attribute: a, Minimum: 18)));
             var planned = new List<StaffAttributeMassChange>();
             try
@@ -65,13 +82,15 @@ public static class BackroomTeam
                         planned.AddRange(StaffAttributeMassEdit.Plan([person], attribute, MassEditMode.Set, minimum, writer));
                 }
                 changes.AddRange(planned);
+                if (person.CurrentAbility < MaxAbility) abilities.Add(new(person, false, person.CurrentAbility, MaxAbility));
+                if (person.PotentialAbility < MaxAbility) abilities.Add(new(person, true, person.PotentialAbility, MaxAbility));
             }
             catch (Exception ex) when (ex is StaleObjectException or MemoryAccessException)
             {
                 skipped.Add((person, ex.Message));
             }
         }
-        return new(changes, skipped);
+        return new(changes, skipped) { Abilities = abilities };
     }
 
     public static void Apply(StaffAttributeMassChange change, StaffRepository repository, StaffWriter writer)
@@ -81,5 +100,18 @@ public static class BackroomTeam
             current.Address != snap.Address || current.Club?.Address != snap.Club?.Address || current.JobCode != snap.JobCode)
             throw new StaleObjectException("The staff member changed club or job since the preset was reviewed");
         writer.SetAttributeRaw(current, change.Field, change.BeforeRaw, change.AfterRaw);
+    }
+
+    /// <summary>Raises CA or PA, and PA with CA so CA never ends above PA; a value already higher stays.</summary>
+    public static void Apply(BackroomAbilityChange change, StaffRepository repository, StaffWriter writer)
+    {
+        var snap = change.Staff;
+        if (repository.Reload(snap.StaffAddress) is not { } current || current.Id != snap.Id ||
+            current.Address != snap.Address || current.Club?.Address != snap.Club?.Address || current.JobCode != snap.JobCode)
+            throw new StaleObjectException("The staff member changed club or job since the preset was reviewed");
+        int ca = current.CurrentAbility, pa = current.PotentialAbility;
+        if (change.Potential) pa = Math.Max(pa, change.After);
+        else { ca = Math.Max(ca, change.After); pa = Math.Max(pa, ca); }
+        if (ca != current.CurrentAbility || pa != current.PotentialAbility) writer.SetAbility(current, ca, pa);
     }
 }

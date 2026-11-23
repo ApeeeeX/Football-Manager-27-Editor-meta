@@ -101,29 +101,52 @@ public sealed partial class MainWindow
         var planned = reader.ReadAll();
         IReadOnlyList<PlayerRecord> players = data?.Players ?? rows.OfType<PlayerRecord>().ToArray();
         if (data is null && players.Count == 0) players = session.Players.LoadAll();
-        using var reads = new BulkReadScope(session.Memory);
-        var personReader = new PlannedRetirements(reads.Memory, session.Profile, session.ModuleBase);
-        var result = new List<RetiringRow>();
-        var found = new HashSet<uint>();
-        foreach (var p in players)
+        bool canUseCachedPersonIndex = session.Profile.Fields.PersonIndex == WorkPermitTable.PersonIndexFor(session.Profile);
+        BulkReadScope? reads = null;
+        PlannedRetirements? personReader = null;
+        try
         {
-            uint person;
-            try { person = personReader.PersonId(p); } catch (MemoryAccessException) { continue; } catch (StaleObjectException) { continue; }
-            if (!planned.TryGetValue(person, out var plan) || !found.Add(person)) continue;
-            result.Add(new(p.DisplayName, p.Age, p.NationalityName, p.ClubName, plan.Date, p, null));
-        }
-        if (found.Count < planned.Count)
-        {
-            var today = data?.GameDate ?? session.ReadGameDate();
-            foreach (var s in data?.Staff ?? session.Staff.LoadAll())
+            var result = new List<RetiringRow>();
+            var found = new HashSet<uint>();
+            foreach (var p in players)
             {
-                uint person = s.PersonIndex is { } index ? (uint)index : BitConverter.ToUInt32(reads.Memory.Read(s.Address + 0x8, 4));
+                uint person;
+                if (canUseCachedPersonIndex && p.Id is > 0 && p.PersonIndex is { } pi && session.Profile.PlayerVtableRvas.Contains(p.VtableRva))
+                {
+                    person = (uint)pi;
+                }
+                else
+                {
+                    reads ??= new BulkReadScope(session.Memory);
+                    personReader ??= new PlannedRetirements(reads.Memory, session.Profile, session.ModuleBase);
+                    try { person = personReader.PersonId(p); } catch (MemoryAccessException) { continue; } catch (StaleObjectException) { continue; }
+                }
                 if (!planned.TryGetValue(person, out var plan) || !found.Add(person)) continue;
-                int? age = s.DateOfBirth is { } born && today is { } d ? d.Year - born.Year - (d < born.AddYears(d.Year - born.Year) ? 1 : 0) : null;
-                result.Add(new(s.DisplayName, age, s.Nationality?.Name ?? "", s.Club?.ShortName ?? s.Club?.Name ?? "", plan.Date, null, s));
+                result.Add(new(p.DisplayName, p.Age, p.NationalityName, p.ClubName, plan.Date, p, null));
             }
+            if (found.Count < planned.Count)
+            {
+                var today = data?.GameDate ?? session.ReadGameDate();
+                foreach (var s in data?.Staff ?? session.Staff.LoadAll())
+                {
+                    uint person;
+                    if (s.PersonIndex is { } index)
+                    {
+                        person = (uint)index;
+                    }
+                    else
+                    {
+                        reads ??= new BulkReadScope(session.Memory);
+                        person = BitConverter.ToUInt32(reads.Memory.Read(s.Address + 0x8, 4));
+                    }
+                    if (!planned.TryGetValue(person, out var plan) || !found.Add(person)) continue;
+                    int? age = s.DateOfBirth is { } born && today is { } d ? d.Year - born.Year - (d < born.AddYears(d.Year - born.Year) ? 1 : 0) : null;
+                    result.Add(new(s.DisplayName, age, s.Nationality?.Name ?? "", s.Club?.ShortName ?? s.Club?.Name ?? "", plan.Date, null, s));
+                }
+            }
+            return result.OrderBy(r => r.RetirementDate ?? DateOnly.MaxValue).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
         }
-        return result.OrderBy(r => r.RetirementDate ?? DateOnly.MaxValue).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        finally { reads?.Dispose(); }
     }
 
     void RefreshRetiringPlayers()

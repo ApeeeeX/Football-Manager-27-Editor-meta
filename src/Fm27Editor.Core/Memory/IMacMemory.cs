@@ -23,6 +23,13 @@ public static class MacMemory
     /// </summary>
     public static IMacMemory Open(int processId, bool writable)
     {
+        // The in-game plugin needs neither root nor task_for_pid, so it works with System Integrity Protection on.
+        string plugin = PluginSocketPath(processId);
+        if (File.Exists(plugin))
+        {
+            try { return new MacHelperProcessMemory(processId, writable, plugin, MacHelperProcessMemory.ReceiveTimeoutMs); }
+            catch (Exception ex) when (ex is MemoryAccessException or System.Net.Sockets.SocketException) { }
+        }
         try
         {
             return new MacProcessMemory(processId, writable);
@@ -32,4 +39,7 @@ public static class MacMemory
             return new MacHelperProcessMemory(processId, writable);
         }
     }
+
+    /// <summary>Where libfm27editor_plugin.dylib listens inside the game: the user's temporary folder, per process.</summary>
+    public static string PluginSocketPath(int processId) => Path.Combine(Path.GetTempPath(), $"fm27editor-{processId}.sock");
 }

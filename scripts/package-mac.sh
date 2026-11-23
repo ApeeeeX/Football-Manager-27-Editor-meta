@@ -41,6 +41,11 @@ clang -O2 -arch "$helper_arch" -Wall -Wextra \
     -o "$app/Contents/MacOS/Fm27EditorHelper" \
     src/Fm27Editor.Helper/fm27_helper.c
 chmod +x "$app/Contents/MacOS/Fm27EditorHelper"
+# The in-game plugin: the editor starts Football Manager 27 with it in DYLD_INSERT_LIBRARIES, so the Steam build
+# (Hardened Runtime) is reachable without root or task_for_pid, with System Integrity Protection left on.
+clang -O2 -arch "$helper_arch" -Wall -Wextra -dynamiclib -DFM27_PLUGIN \
+    -o "$app/Contents/MacOS/libfm27editor_plugin.dylib" \
+    src/Fm27Editor.Helper/fm27_helper.c
 
 # Build profiles next to the binary; packaged copies come from the publish output, the repo is the fallback.
 if [ -d "$publish/offsets" ]; then

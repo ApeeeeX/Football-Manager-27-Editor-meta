@@ -126,7 +126,7 @@ public sealed class ClubFieldAccess(IProcessMemory memory, OffsetProfile profile
         _ => 4,
     };
 
-    internal static long Decode(byte[] b, ClubFieldOffset o)
+    internal static long Decode(ReadOnlySpan<byte> b, ClubFieldOffset o)
     {
         if (o.Mask != 0) return (b[0] & o.Mask) != 0 ? 1 : 0;
         long raw = o.Type switch
@@ -134,7 +134,7 @@ public sealed class ClubFieldAccess(IProcessMemory memory, OffsetProfile profile
             ClubFieldType.Byte or ClubFieldType.Bool => b[0],
             ClubFieldType.SByte => (sbyte)b[0],
             ClubFieldType.Int16 => BitConverter.ToInt16(b),
-            ClubFieldType.Date => DateValue(BitConverter.ToInt16(b), BitConverter.ToInt16(b, 2)),
+            ClubFieldType.Date => DateValue(BitConverter.ToInt16(b), BitConverter.ToInt16(b[2..])),
             ClubFieldType.Colour => BitConverter.ToUInt32(b),
             ClubFieldType.Float => (long)Math.Round(BitConverter.ToSingle(b)),
             _ => BitConverter.ToInt32(b),

@@ -81,6 +81,27 @@ public class StaffFreezerTests
     }
 
     [Fact]
+    public void Freeze_restores_current_ability_and_leaves_potential_alone()
+    {
+        var repo = new StaffRepository(_w.Memory, _w.Profile, TestWorld.ModuleBase);
+        var writer = new StaffWriter(_w.Memory, _w.Profile, TestWorld.ModuleBase);
+        var staff = Assert.Single(repo.LoadAll());
+        Assert.Equal((188, 195), ((int)staff.CurrentAbility, (int)staff.PotentialAbility)); // bytes BC00 C300 at staff + 0xDA
+        var frozen = FrozenStaff.Capture(staff, FrozenStaff.AllAttributes(staff));
+
+        Assert.True(_w.Memory.TryWrite(Obj + 0xDA, Convert.FromHexString("AA009600"))); // CA 170, PA 150
+
+        Assert.Equal(1, frozen.Reconcile(repo, writer));
+        var after = repo.Reload(Person)!;
+        Assert.Equal((188, 150), ((int)after.CurrentAbility, (int)after.PotentialAbility));
+
+        // A deliberate edit becomes the new frozen CA.
+        writer.SetCurrentAbility(after, 192);
+        Assert.True(frozen.AcceptAbilityEdit(repo.Reload(Person)!));
+        Assert.Equal(0, frozen.Reconcile(repo, writer));
+    }
+
+    [Fact]
     public void AllAttributes_enumerates_valid_staff_attributes()
     {
         var repo = new StaffRepository(_w.Memory, _w.Profile, TestWorld.ModuleBase);

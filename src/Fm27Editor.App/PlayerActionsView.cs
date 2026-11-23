@@ -49,13 +49,13 @@ public sealed partial class MainWindow
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 6,
-                Margin = new Thickness(0, 0, 20, 0),
+                Margin = new Thickness(0, 0, 18, 0),
                 VerticalAlignment = VerticalAlignment.Center,
             };
             var lbl = new TextBlock
             {
                 Text = Loc.S(d.Label),
-                FontSize = 12.5,
+                FontSize = 12,
                 FontWeight = FontWeight.SemiBold,
                 Foreground = Brush("#94A3B8"),
                 VerticalAlignment = VerticalAlignment.Center,
@@ -67,10 +67,10 @@ public sealed partial class MainWindow
                 Minimum = d.Min,
                 Maximum = d.Max,
                 Value = (decimal)currentVal,
-                Width = 68,
+                Width = 74,
                 MinWidth = 0,
-                Height = 22,
-                MinHeight = 22,
+                Height = 24,
+                MinHeight = 24,
                 ShowButtonSpinner = false,
                 VerticalContentAlignment = VerticalAlignment.Center,
                 HorizontalContentAlignment = HorizontalAlignment.Right,
@@ -96,8 +96,8 @@ public sealed partial class MainWindow
             {
                 Background = UiKit.SurfaceAlt,
                 BorderBrush = UiKit.BorderSubtle,
-                BorderThickness = new Thickness(0, 1, 0, 0),
-                Padding = new Thickness(14, 5),
+                BorderThickness = new Thickness(0, 1, 0, 1),
+                Padding = new Thickness(12, 5),
                 Child = panel,
             }
             : null;
@@ -221,45 +221,15 @@ public sealed partial class MainWindow
     {
         var panel = new StackPanel
         {
-            Spacing = 8,
-            Margin = new Thickness(8, 8),
-        };
-
-        static Grid Pair(Control left, Control right)
-        {
-            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 8 };
-            Grid.SetColumn(left, 0);
-            Grid.SetColumn(right, 1);
-            g.Children.Add(left);
-            g.Children.Add(right);
-            return g;
-        }
-
-        static TextBlock Subhead(string text, bool first = false) => new()
-        {
-            Text = Loc.S(text),
-            FontSize = 11,
-            FontWeight = FontWeight.Bold,
-            Foreground = UiKit.Brush("#7E8BA3"),
-            LetterSpacing = 0.4,
-            Margin = new Thickness(1, first ? 2 : 6, 0, 1),
+            Spacing = 5,
+            Margin = new Thickness(7, 7),
         };
 
         if (!isSquadMode && player is not null)
         {
             if (backend.Freezer is not null)
             {
-                var freeze = new Button
-                {
-                    Content = Loc.S("Freeze"),
-                    FontSize = 12.5,
-                    Height = 24,
-                    MinHeight = 24,
-                    Padding = new Thickness(3, 0),
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                };
-                freeze.Click += (_, _) =>
+                var freeze = ToolGrid.ToolButton("Freeze", () =>
                 {
                     try
                     {
@@ -267,19 +237,8 @@ public sealed partial class MainWindow
                         onStatus?.Invoke(Loc.F("Frozen: {0}", player.DisplayName));
                     }
                     catch (Exception ex) { onStatus?.Invoke(Loc.F("Freezer: {0}", UserMessage.For(ex))); }
-                };
-
-                var unfreeze = new Button
-                {
-                    Content = Loc.S("Unfreeze"),
-                    FontSize = 12.5,
-                    Height = 24,
-                    MinHeight = 24,
-                    Padding = new Thickness(3, 0),
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                };
-                unfreeze.Click += (_, _) =>
+                });
+                var unfreeze = ToolGrid.ToolButton("Unfreeze", () =>
                 {
                     try
                     {
@@ -290,17 +249,12 @@ public sealed partial class MainWindow
                         }
                     }
                     catch (Exception ex) { onStatus?.Invoke(Loc.F("Freezer: {0}", UserMessage.For(ex))); }
-                };
-
-                panel.Children.Add(Pair(freeze, unfreeze));
+                });
+                panel.Children.Add(ToolGrid.ToolPair(freeze, unfreeze));
             }
-            var export = new Button { Content = Loc.S("Export"), FontSize = 12.5, Height = 24, MinHeight = 24, Padding = new Thickness(3, 0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
-            ToolTip.SetTip(export, Loc.S("Export attributes"));
-            export.Click += async (_, _) => await ExportPlayerAttributesAsync(player);
-            var import = new Button { Content = Loc.S("Import"), FontSize = 12.5, Height = 24, MinHeight = 24, Padding = new Thickness(3, 0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
-            ToolTip.SetTip(import, Loc.S("Import attributes"));
-            import.Click += async (_, _) => await ImportPlayerAttributesAsync(player);
-            panel.Children.Add(Pair(export, import));
+            panel.Children.Add(ToolGrid.ToolPair(
+                ToolGrid.ToolButton("Export", () => _ = ExportPlayerAttributesAsync(player), "Export attributes"),
+                ToolGrid.ToolButton("Import", () => _ = ImportPlayerAttributesAsync(player), "Import attributes")));
         }
 
         TextBlock? selectedCountText = null;
@@ -317,25 +271,10 @@ public sealed partial class MainWindow
             registerSelectionUpdater?.Invoke(UpdateCount);
             panel.Children.Add(selectedCountText);
         }
-        panel.Children.Add(Subhead("CONTRACT", first: false));
+        panel.Children.Add(ToolGrid.ToolSectionHeader("CONTRACT", first: !isSquadMode && player is null));
 
-        Button ActionBtn(string text, Action onClick, bool enabled = true)
-        {
-            var btn = new Button
-            {
-                Content = new TextBlock { Text = Loc.S(text), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
-                FontSize = 12.5,
-                MinHeight = 24,
-                Padding = new Thickness(3, 3),
-                VerticalContentAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                IsEnabled = enabled,
-            };
-            if (ToolTips.TryGetValue(text, out var tip)) ToolTip.SetTip(btn, Loc.S(tip));
-            btn.Click += (_, _) => onClick();
-            return btn;
-        }
+        static Button ActionBtn(string text, Action onClick, bool enabled = true) =>
+            ToolGrid.ToolButton(text, onClick, ToolTips.TryGetValue(text, out var tip) ? tip : null, enabled);
 
         void RunAction(string actionName, Action<PlayerRecord> action)
         {
@@ -387,7 +326,7 @@ public sealed partial class MainWindow
         panel.Children.Add(ActionBtn("Make it Expire", () =>
             RunAction("Make it Expire", p => SquadAdapter.MakeExpire(backend.Session, p))));
 
-        panel.Children.Add(Pair(
+        panel.Children.Add(ToolGrid.ToolPair(
             ActionBtn("−1 Year", () => RunAction("−1 Year", p => SquadAdapter.ShiftExpiry(backend.Session, p, -1))),
             ActionBtn("+1 Year", () => RunAction("+1 Year", p => SquadAdapter.ShiftExpiry(backend.Session, p, 1)))));
 
@@ -403,7 +342,7 @@ public sealed partial class MainWindow
 
         if (!isSquadMode && player is not null)
         {
-            panel.Children.Add(Subhead("TEAM"));
+            panel.Children.Add(ToolGrid.ToolSectionHeader("TEAM"));
             bool captain = backend.Session.Profile.Team?.Captain is not null;
             bool vice = backend.Session.Profile.Team?.ViceCaptain is not null;
             panel.Children.Add(ActionBtn("Make Captain", () => _ = MakeCaptainAsync(player, CaptainRole.Captain), enabled: captain));
@@ -412,19 +351,19 @@ public sealed partial class MainWindow
                 panel.Children.Add(ActionBtn("Undo captain change", () => _ = UndoCaptainAsync(), enabled: true));
         }
 
-        panel.Children.Add(Subhead("STATE"));
+        panel.Children.Add(ToolGrid.ToolSectionHeader("STATE"));
 
-        panel.Children.Add(Pair(
+        panel.Children.Add(ToolGrid.ToolPair(
             ActionBtn("Heal", () => RunAction("Heal", p => backend.Session.Heal(p))),
             ActionBtn("Inspire", () => RunAction("Inspire", p => backend.Session.Inspire(p)))));
 
-        panel.Children.Add(Pair(
+        panel.Children.Add(ToolGrid.ToolPair(
             ActionBtn("Destroy", () => RunAction("Destroy", p => backend.Session.Destroy(p))),
             ActionBtn("No Bans", () => RunAction("Remove bans", p => backend.Session.RemoveMatchBans(p)))));
 
         if (isSquadMode)
         {
-            panel.Children.Add(Pair(
+            panel.Children.Add(ToolGrid.ToolPair(
                 ActionBtn("Freeze", () => RunAction("Freeze", p =>
                 {
                     if (backend.Freezer is { } freezer)
@@ -476,7 +415,7 @@ public sealed partial class MainWindow
                 row.Children.Add(new TextBlock { Text = Loc.S(label), TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Foreground = UiKit.TextSecondary });
                 return row;
             }
-            panel.Children.Add(Subhead("YOUTH"));
+            panel.Children.Add(ToolGrid.ToolSectionHeader("YOUTH"));
             panel.Children.Add(Labelled("Lowest PA", minPa));
             panel.Children.Add(Labelled("Highest PA", maxPa));
             panel.Children.Add(ActionBtn("Golden Generation", () =>
@@ -515,7 +454,7 @@ public sealed partial class MainWindow
         AddDevelopmentSpeed(panel, player, isSquadMode, getSelectedPlayers, onStatus, onApplied, ActionBtn);
 
         var card = UiKit.Card(isSquadMode ? "Presets" : "Tools", panel);
-        card.Width = isSquadMode ? 196 : 168;
+        card.Width = ToolGrid.ToolsWidth;
         card.VerticalAlignment = VerticalAlignment.Top;
         return card;
     }

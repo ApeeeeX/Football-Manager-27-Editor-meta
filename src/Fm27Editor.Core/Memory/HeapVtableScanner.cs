@@ -20,8 +20,11 @@ public static class HeapVtableScanner
     {
         if (memory is not IMemoryRegions regions)
             throw new NotSupportedException("Heap discovery requires memory region enumeration");
-        var vectors = vtables.Select(v => new Vector<ulong>(v)).ToArray();
         var readable = regions.EnumerateWritableRegions().Where(r => !r.IsModuleData && !r.IsGuard).ToArray();
+        if (memory is IVtableHeapScanner nativeScanner &&
+            nativeScanner.TryScanVtables(readable, vtables, tolerateUnreadable, memory is IUnreadablePagesAreNotHeap, ct) is { } fastMatches)
+            return fastMatches;
+        var vectors = vtables.Select(v => new Vector<ulong>(v)).ToArray();
         var results = new IReadOnlyList<HeapVtableMatch>[readable.Length];
         var errors = new Exception?[readable.Length];
         // Windows ReadProcessMemory supports independent concurrent reads. Other providers remain serial.

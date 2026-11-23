@@ -28,6 +28,8 @@ public sealed record StaffRecord
     public ClubInfo? Club { get; init; }
     /// <summary>Team name when its classification is independently identified; otherwise null.</summary>
     public string? TeamName { get; init; }
+    /// <summary>The team the job record names; 0 without a job or team.</summary>
+    public ulong TeamAddress { get; init; }
     /// <summary>Raw job code from the job record (FMRTE Man Utd: 2 Coach, 4 Chairperson, 6 Director, 10 Director of
     /// Football, 16 Manager, 20 Assistant Manager, 26 Fitness Coach, 34 GK Coach, 60 Performance Analyst, 64 Head of
     /// Youth Development); null without a job.</summary>
@@ -74,6 +76,8 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
         if (root == 0 || begin == 0 || end < begin || (end - begin) % 8 != 0 || (end - begin) / 8 > MaxPersons)
             throw new MemoryAccessException($"Person list looks invalid (begin 0x{begin:X}, end 0x{end:X}); is a save loaded?");
         var raw = memory.Read(begin, (int)(end - begin));
+        if (memory is ReadAheadMemory ram)
+            ram.Prefetch(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(raw), s.DirectStaffVector ? 0x400 : 0x180);
         var reader = new PlayerReader(memory, profile) { ModuleBase = moduleBase };
         var result = new List<StaffRecord>();
         Span<byte> vtable = stackalloc byte[8];
@@ -180,6 +184,7 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
         short? jobCode = null;
         ClubInfo? club = null;
         string? teamName = null;
+        ulong teamAddress = 0;
         ulong job = BitConverter.ToUInt64(p, s.Job);
         var jb = new byte[JobReadSize];
         if (job != 0 && memory.TryRead(job, jb) && BitConverter.ToUInt64(jb, s.JobPerson) == person + (ulong)s.JobPersonAnchor)
@@ -187,7 +192,7 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
             jobCode = jb[s.JobCode]; // one byte: Touch keeps a flag (0x10) in the byte above (Head of Youth Development read as 0x1040)
             if (profile.Contract is { } c)
             {
-                ulong team = BitConverter.ToUInt64(jb, s.JobTeam);
+                ulong team = teamAddress = BitConverter.ToUInt64(jb, s.JobTeam);
                 club = reader.ClubOfTeam(team, c);
                 teamName = ReadTeamName(team, club);
             }
@@ -221,6 +226,7 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
             Nationality = profile.Nation is { } n ? reader.ReadNation(BitConverter.ToUInt64(p, s.Nation), n) : null,
             Club = club,
             TeamName = teamName,
+            TeamAddress = teamAddress,
             JobCode = jobCode,
             HomeReputation = BitConverter.ToInt16(st, s.HomeReputation),
             CurrentReputation = BitConverter.ToInt16(st, s.CurrentReputation),
@@ -320,6 +326,13 @@ public sealed class StaffWriter(IProcessMemory memory, OffsetProfile profile, ul
         Write(staff, staff.StaffAddress + (ulong)S.CurrentAbility,
             [.. BitConverter.GetBytes(staff.CurrentAbility), .. BitConverter.GetBytes(staff.PotentialAbility)],
             [.. BitConverter.GetBytes((short)currentAbility), .. BitConverter.GetBytes((short)potentialAbility)]);
+    }
+
+    /// <summary>Writes CA alone, so a PA outside the editable range is left as the game has it.</summary>
+    public void SetCurrentAbility(StaffRecord staff, int value)
+    {
+        if (value is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(value), "CA is 1–200");
+        Write(staff, staff.StaffAddress + (ulong)S.CurrentAbility, BitConverter.GetBytes(staff.CurrentAbility), BitConverter.GetBytes((short)value));
     }
 
     public void SetReputation(StaffRecord staff, int home, int current, int world)

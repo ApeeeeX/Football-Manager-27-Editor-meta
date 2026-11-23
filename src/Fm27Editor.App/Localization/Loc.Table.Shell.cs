@@ -284,6 +284,22 @@ public static partial class Loc
         m["Press Load Game to read the new save"] = "Nhấn Tải dữ liệu Game để đọc file save mới";
         m["No save is loaded in the game yet"] = "Chưa có file save nào được tải trong game";
         m["Save not loaded"] = "Chưa tải file save";
+
+        // macOS plugin setup (MacPluginSetupView.cs)
+        m["Set up the editor plugin"] = "Cài plugin của editor";
+        m["With System Integrity Protection on, the editor reads Football Manager 27 from Steam through its plugin. Set up adds the plugin to the game's Steam launch options; the game's files are not changed. Quit Football Manager 27 and Steam before you select Set up."] =
+            "Khi System Integrity Protection đang bật, editor đọc Football Manager 27 bản Steam qua plugin của mình. Cài đặt sẽ thêm plugin vào Launch Options của game trên Steam; file của game không bị thay đổi. Hãy thoát Football Manager 27 và Steam trước khi chọn Cài đặt.";
+        m["Set up"] = "Cài đặt";
+        m["Restart Football Manager 27"] = "Mở lại Football Manager 27";
+        m["The plugin is set up, but this game was started without it. Quit Football Manager 27, start it again from Steam, load your save, then select Load Game."] =
+            "Plugin đã được cài, nhưng game này được mở trước khi có plugin. Hãy thoát Football Manager 27, mở lại từ Steam, tải save rồi chọn Tải dữ liệu Game.";
+        m["Quit Steam first"] = "Hãy thoát Steam trước";
+        m["Steam rewrites its settings when it quits, which would undo the setup. Quit Football Manager 27 and Steam, then select Set up."] =
+            "Steam ghi lại cài đặt khi thoát, việc đó sẽ xóa mất phần cài đặt. Hãy thoát Football Manager 27 và Steam rồi chọn Cài đặt.";
+        m["Plugin set up"] = "Đã cài plugin";
+        m["Start Steam and Football Manager 27, load your save, then select Load Game. If the game was open, quit it and start it again from Steam."] =
+            "Mở Steam và Football Manager 27, tải save rồi chọn Tải dữ liệu Game. Nếu game đang mở, hãy thoát rồi mở lại từ Steam.";
+        m["Plugin not set up"] = "Chưa cài được plugin";
         m["This game version ({0}) is supported, but no save is loaded yet. Load your save in the game, save it without exiting, then press Load Game again."] =
             "Phiên bản game ({0}) được hỗ trợ, nhưng chưa có file save nào được tải. Hãy mở save trong game, lưu lại không cần thoát, rồi nhấn Tải dữ liệu Game.";
         m["Development speed: removed {0} stale player row(s)."] = "Tốc độ phát triển: đã gỡ {0} cầu thủ cũ không còn hiệu lực.";

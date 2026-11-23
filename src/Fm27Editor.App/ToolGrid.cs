@@ -29,7 +29,7 @@ internal static class ToolGrid
             SelectionMode = DataGridSelectionMode.Extended,
             GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
             HorizontalGridLinesBrush = Brush("#1D2130"),
-            RowHeight = 29,
+            RowHeight = 28,
             Background = Brush("#11131C"),
             BorderBrush = Brush("#252A3D"),
             BorderThickness = new Thickness(1),
@@ -61,8 +61,8 @@ internal static class ToolGrid
             Foreground = Brush("#94A3B8"),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = align,
-            TextTrimming = TextTrimming.None,
-            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
             Margin = new Thickness(0, 4),
         };
         Loc.Bind(tb, () =>
@@ -73,19 +73,94 @@ internal static class ToolGrid
         return tb;
     }
 
+    public const double ToolsWidth = 166.0;
+
+    /// <summary>Standard side-panel action button with crisp height, no text wrap, ellipsis, and tooltip.</summary>
+    public static Button ToolButton(string text, Action onClick, string? tooltip = null, bool enabled = true)
+    {
+        string labelText = Loc.S(text);
+        var btn = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = labelText,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextAlignment = TextAlignment.Center,
+            },
+            FontSize = 12,
+            Height = 24,
+            MinHeight = 24,
+            Padding = new Thickness(4, 0),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            IsEnabled = enabled,
+        };
+        ToolTip.SetTip(btn, tooltip is not null ? Loc.S(tooltip) : labelText);
+        btn.Click += (_, _) => onClick();
+        return btn;
+    }
+
+    public static Grid ToolPair(Control left, Control right)
+    {
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 5 };
+        Grid.SetColumn(left, 0);
+        Grid.SetColumn(right, 1);
+        g.Children.Add(left);
+        g.Children.Add(right);
+        return g;
+    }
+
+    public static TextBlock ToolSectionHeader(string text, bool first = false) => new()
+    {
+        Text = Loc.S(text),
+        FontSize = 10.5,
+        FontWeight = FontWeight.Bold,
+        Foreground = Brush("#7E8BA3"),
+        LetterSpacing = 0.4,
+        Margin = new Thickness(1, first ? 1 : 7, 0, 2),
+    };
+
+    /// <summary>Places a primary view beside a fixed-width right-hand Tools card without overflowing narrow windows.</summary>
+    public static Grid WithTools(Control content, Control toolsCard)
+    {
+        var layout = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        Grid.SetColumn(content, 0);
+        layout.Children.Add(content);
+        toolsCard.Width = ToolsWidth;
+        toolsCard.VerticalAlignment = VerticalAlignment.Top;
+        toolsCard.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(toolsCard, 1);
+        layout.Children.Add(toolsCard);
+        return layout;
+    }
+
     /// <summary>A right-aligned number column.</summary>
-    public static DataGridTemplateColumn Number<T>(string title, Func<T, string> text, double width, string tooltip, double rightInset = 5) => new()
+    public static DataGridTemplateColumn Number<T>(string title, Func<T, string> text, double width, string tooltip, Func<T, string?>? cellTooltip = null, double rightInset = 5) => new()
     {
         Header = WithRightInset(Header(title, tooltip, HorizontalAlignment.Right), rightInset),
         Width = new DataGridLength(width),
-        CellTemplate = new FuncDataTemplate<T>((row, _) => new TextBlock
+        CellTemplate = new FuncDataTemplate<T>((row, _) =>
         {
-            Text = text(row),
-            Foreground = Brush("#F1F5F9"),
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            TextAlignment = TextAlignment.Right,
-            Margin = new Thickness(0, 0, rightInset, 0),
+            string value = text(row);
+            var tb = new TextBlock
+            {
+                Text = value,
+                Foreground = Brush("#F1F5F9"),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                TextAlignment = TextAlignment.Right,
+                TextWrapping = TextWrapping.NoWrap,
+                Margin = new Thickness(0, 0, rightInset, 0),
+            };
+            if (cellTooltip is not null && cellTooltip(row) is { Length: > 0 } tip)
+                ToolTip.SetTip(tb, tip);
+            return tb;
         }),
     };
 
@@ -98,23 +173,32 @@ internal static class ToolGrid
     }
 
     /// <summary>A left-aligned text column; <paramref name="width"/> &lt;= 0 makes it a star column.</summary>
-    public static DataGridTemplateColumn Text<T>(string title, Func<T, string> text, double width, string tooltip, string foreground = "#CBD5E1", bool bold = false, double minWidth = 0) => new()
+    public static DataGridTemplateColumn Text<T>(string title, Func<T, string> text, double width, string tooltip, string foreground = "#CBD5E1", bool bold = false, double minWidth = 0) =>
+        TextColumn(title, text, width <= 0 ? new DataGridLength(1, DataGridLengthUnitType.Star) : new DataGridLength(width), minWidth, tooltip, foreground, bold);
+
+    /// <summary>A left-aligned star-weighted text column that proportions cleanly across window sizes without overflowing.</summary>
+    public static DataGridTemplateColumn StarText<T>(string title, Func<T, string> text, double weight, double minWidth, string tooltip, string foreground = "#CBD5E1", bool bold = false) =>
+        TextColumn(title, text, new DataGridLength(weight, DataGridLengthUnitType.Star), minWidth, tooltip, foreground, bold);
+
+    static DataGridTemplateColumn TextColumn<T>(string title, Func<T, string> text, DataGridLength width, double minWidth, string tooltip, string foreground, bool bold) => new()
     {
         Header = Header(title, tooltip, HorizontalAlignment.Left),
-        Width = width <= 0 ? new DataGridLength(1, DataGridLengthUnitType.Star) : new DataGridLength(width),
+        Width = width,
         MinWidth = minWidth,
         CellTemplate = new FuncDataTemplate<T>((row, _) =>
         {
+            string value = text(row);
             var tb = new TextBlock
             {
-                Text = text(row),
+                Text = value,
                 FontWeight = bold ? FontWeight.Medium : FontWeight.Normal,
                 Foreground = Brush(foreground),
                 VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(4, 0, 4, 0),
             };
-            ToolTip.SetTip(tb, text(row));
+            ToolTip.SetTip(tb, value);
             return tb;
         }),
     };
@@ -151,7 +235,7 @@ internal static class ToolGrid
         grid.Columns.Add(new DataGridTemplateColumn
         {
             Header = all,
-            Width = new DataGridLength(34),
+            Width = new DataGridLength(30),
             CanUserSort = false,
             CellTemplate = new FuncDataTemplate<T>((row, _) =>
             {

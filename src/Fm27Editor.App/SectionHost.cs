@@ -144,7 +144,7 @@ static class SectionHost
 
         var content = new ContentControl
         {
-            Margin = entity == "player" ? new Thickness(6, 0, 0, 0) : new Thickness(12, 0, 0, 0),
+            Margin = entity == "player" ? new Thickness(8, 0, 0, 0) : new Thickness(10, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -153,8 +153,15 @@ static class SectionHost
         var list = CreateRailListBox(stretchVertically: entity != "player");
         list.ItemTemplate = new FuncDataTemplate<Entry>((entry, _) =>
         {
-            var label = new TextBlock { FontSize = 13, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+            var label = new TextBlock
+            {
+                FontSize = 12.5,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
             label.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(Entry.Label)));
+            label.Bind(ToolTip.TipProperty, new Avalonia.Data.Binding(nameof(Entry.Label)));
             return label;
         }, false);
 
@@ -267,18 +274,14 @@ static class SectionHost
             Padding = new Thickness(3),
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Disabled);
-        list.Styles.Add(new Style(x => x.OfType<ListBoxItem>().Descendant().OfType<TextBlock>())
-        {
-            Setters = { new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap) }
-        });
         list.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
         {
             Setters =
             {
-                new Setter(TemplatedControl.PaddingProperty, new Thickness(5, 4)),
+                new Setter(TemplatedControl.PaddingProperty, new Thickness(7, 3)),
                 new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch),
-                new Setter(TemplatedControl.MinHeightProperty, 25.0),
-                new Setter(TemplatedControl.MarginProperty, new Thickness(0, 1)),
+                new Setter(TemplatedControl.MinHeightProperty, 24.0),
+                new Setter(TemplatedControl.MarginProperty, new Thickness(0, 0.5)),
                 new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(3)),
                 new Setter(TemplatedControl.ForegroundProperty, UiKit.TextMuted),
                 new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(2, 0, 0, 0)),

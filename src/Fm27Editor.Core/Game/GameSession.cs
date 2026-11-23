@@ -141,6 +141,14 @@ public sealed class GameSession : IDisposable
         return reader.ReadAll(competitions);
     }
 
+    /// <summary>Vtable addresses used when transfer clauses require a heap scan.</summary>
+    public IReadOnlyList<ulong> TransferClauseVtableAddresses =>
+        (_clauseReader ??= new Clubs.TransferClauseReader(_memory, Profile, Game.ModuleBase)).ScanVtableAddresses;
+
+    /// <summary>Pre-populates scanned transfer clause candidates from the shared heap scan.</summary>
+    public void PreloadTransferClauses(IReadOnlyList<ulong> candidates) =>
+        (_clauseReader ??= new Clubs.TransferClauseReader(_memory, Profile, Game.ModuleBase)).PreloadScanned(candidates);
+
     /// <summary>Runs the clause heap scan once, so the first Contract card does not wait for it.</summary>
     public void EnsureTransferClausesLoaded() =>
         (_clauseReader ??= new Clubs.TransferClauseReader(_memory, Profile, Game.ModuleBase)).EnsureLoaded();

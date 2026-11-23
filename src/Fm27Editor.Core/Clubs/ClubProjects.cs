@@ -8,7 +8,6 @@ namespace Fm27Editor.Core.Clubs;
 public enum ClubProjectKind { StadiumExpansion, FacilityUpgrade }
 
 public sealed record ClubProjectQueueOffsets(int Vector, int Club, int Date, int? Stadium, uint? Vtable);
-
 /// <summary>
 /// The game's table of pending stadium changes (<c>db::DATABASE_TABLE&lt;db::STADIUM_CHANGE&gt;</c>), the record that
 /// actually finishes a capacity change. Windows Steam 27.1.0, 18/12/2026: moving Wrexham's completion date (+0x34)
@@ -18,8 +17,11 @@ public sealed record ClubProjectQueueOffsets(int Vector, int Club, int Date, int
 /// </summary>
 public sealed record StadiumChangeOffsets(uint TableRoot, uint TableVtable, int Vector, uint Vtable, int Stadium, int Date);
 
+public sealed record StadiumBoardRequestOffsets(int HolderType, int Requests, int Vector, int RequestType, int Flags,
+    int TargetDate, int CompletedDate);
+
 public sealed record ClubProjectOffsets(uint ManagerRoot, uint ManagerVtable, ClubProjectQueueOffsets Expansions, ClubProjectQueueOffsets Upgrades,
-    int? StadiumPlans = null, int? StadiumPlanExpiry = null)
+    int? StadiumPlans = null, int? StadiumPlanExpiry = null, StadiumBoardRequestOffsets? BoardRequests = null)
 {
     public StadiumChangeOffsets? StadiumChanges { get; init; }
 }
@@ -28,8 +30,9 @@ public sealed record ClubProjectOffsets(uint ManagerRoot, uint ManagerVtable, Cl
 /// expansion (0 when the build has no stadium change table or the expansion has none).</summary>
 public sealed record ClubProject(ClubProjectKind Kind, ulong Address, ulong DateAddress, uint RawDate, DateOnly ScheduledDate,
     ulong ChangeDateAddress = 0, uint ChangeRawDate = 0);
-public sealed record StadiumPlan(DateOnly? ExpiryDate);
-public sealed record ClubProjectOverview(DateOnly Today, IReadOnlyList<ClubProject> Scheduled, StadiumPlan? Planning);
+public sealed record StadiumPlan(DateOnly? ExpiryDate, DateOnly? ReviewDate = null);
+public sealed record ClubProjectOverview(DateOnly Today, IReadOnlyList<ClubProject> Scheduled, StadiumPlan? Planning,
+    DateOnly? AnnouncedExpansionDate = null);
 
 /// <summary>Projects and stadium plans owned by the club's finance manager.</summary>
 public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
@@ -52,7 +55,13 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
         var today = ReadToday(source);
         var (layout, manager) = ReadManager(source, club);
         var scheduled = ReadScheduled(source, club, today, layout, manager);
-        return new(today, scheduled, ReadStadiumPlan(source, club, layout, manager));
+        var planning = ReadStadiumPlan(source, club, layout, manager);
+        var (expansionDate, reviewDate) = layout.BoardRequests is { } requests
+            ? new ClubListReader(source, profile, moduleBase).ReadStadiumBoardRequests(club.Address, requests, today)
+            : (null, null);
+        if (reviewDate is not null) planning = new(planning?.ExpiryDate, reviewDate);
+        if (scheduled.Any(project => project.Kind == ClubProjectKind.StadiumExpansion)) expansionDate = null;
+        return new(today, scheduled, planning, expansionDate);
     }
 
     static StadiumPlan? ReadStadiumPlan(IProcessMemory source, ClubEntry club, ClubProjectOffsets layout, ulong manager)

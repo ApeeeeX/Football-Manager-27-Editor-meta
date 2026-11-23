@@ -109,6 +109,13 @@ public sealed class EditorBackend : IEditorBackend, IDisposable
         catch (Exception ex) { Freezer = null; FreezeError = ex.Message; }
     }
 
+    public void AcceptFrozenStaffAbility(Fm27Editor.Core.Staff.StaffRecord staff)
+    {
+        if (Freezer is not { } freezer) return;
+        try { freezer.AcceptStaffAbilityEdit(staff); }
+        catch (Exception ex) { Freezer = null; FreezeError = ex.Message; }
+    }
+
     public void AcceptFrozenClubEdit(ClubEntry club, ClubField field)
     {
         if (field != ClubField.Balance || Freezer is not { } freezer ||

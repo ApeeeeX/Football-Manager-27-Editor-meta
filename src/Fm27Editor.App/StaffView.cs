@@ -132,13 +132,13 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
 
     protected override void ConfigureColumns(DataGrid grid)
     {
-        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Name"), Binding = new Binding(nameof(StaffRow.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Job"), Binding = new Binding(nameof(StaffRow.JobDisplay)), Width = new DataGridLength(156) });
-        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Club"), Binding = new Binding(nameof(StaffRow.Club)), Width = new DataGridLength(150) });
-        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Nation"), Binding = new Binding(nameof(StaffRow.Nation)), Width = new DataGridLength(126) });
+        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Name"), Binding = new Binding(nameof(StaffRow.Name)), Width = new DataGridLength(1.5, DataGridLengthUnitType.Star), MinWidth = 130 });
+        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Job"), Binding = new Binding(nameof(StaffRow.JobDisplay)), Width = new DataGridLength(1.1, DataGridLengthUnitType.Star), MinWidth = 110 });
+        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Club"), Binding = new Binding(nameof(StaffRow.Club)), Width = new DataGridLength(1.1, DataGridLengthUnitType.Star), MinWidth = 110 });
+        grid.Columns.Add(new DataGridTextColumn { Header = Loc.S("Nation"), Binding = new Binding(nameof(StaffRow.Nation)), Width = new DataGridLength(0.9, DataGridLengthUnitType.Star), MinWidth = 95 });
         foreach (var (h, p) in new[] { ("Age", nameof(StaffRow.Age)), ("CA", nameof(StaffRow.CA)), ("PA", nameof(StaffRow.PA)) })
         {
-            var col = new DataGridTextColumn { Header = Loc.S(h), Binding = new Binding(p), Width = new DataGridLength(78) };
+            var col = new DataGridTextColumn { Header = Loc.S(h), Binding = new Binding(p), Width = new DataGridLength(50), MinWidth = 44 };
             col.CellStyleClasses.Add("numeric");
             grid.Columns.Add(col);
         }
@@ -269,7 +269,10 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
                     StaffDetailsMassEdit.Apply(change, Host.Backend.Session.Staff);
             }
             if (v.ContainsKey("CA") || v.ContainsKey("PA"))
+            {
                 w.SetAbility(s, v.GetValueOrDefault("CA", s.CurrentAbility), v.GetValueOrDefault("PA", s.PotentialAbility));
+                if (Host.Backend.Session.Staff.Reload(s.Address) is { } withAbility) Host.Backend.AcceptFrozenStaffAbility(withAbility);
+            }
             if (v.Keys.Any(k => k.StartsWith("rep:", StringComparison.Ordinal)))
                 w.SetReputation(s, v.GetValueOrDefault("rep:Home", s.HomeReputation), v.GetValueOrDefault("rep:Current", s.CurrentReputation),
                     v.GetValueOrDefault("rep:World", s.WorldReputation));
@@ -286,8 +289,9 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
             var box = new TextBox
             {
                 Text = draft.Changes.GetValueOrDefault(key, original),
-                Width = isRating20 ? 32 : width, MinWidth = 0,
-                Height = isRating20 ? 20 : 22, MinHeight = isRating20 ? 20 : 22,
+                Width = isRating20 ? 30 : width, MinWidth = 0,
+                Height = isRating20 ? 20 : 24, MinHeight = isRating20 ? 20 : 24,
+                CornerRadius = new CornerRadius(3),
                 Padding = isRating20 ? new Thickness(2, 0) : new Thickness(5, 0),
                 FontSize = 13, FontWeight = isRating20 ? FontWeight.Bold : FontWeight.SemiBold,
                 HorizontalContentAlignment = isRating20 ? HorizontalAlignment.Center : HorizontalAlignment.Right,
@@ -334,10 +338,16 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
             int idx = 0;
             foreach (var (label, value) in items)
             {
-                var line = new DockPanel { MinHeight = 23, LastChildFill = true };
+                var line = new DockPanel { MinHeight = 24, LastChildFill = true };
                 DockPanel.SetDock(value, Dock.Right);
                 line.Children.Add(value);
-                line.Children.Add(Text(Loc.S(label)));
+                string resolved = Loc.S(label);
+                var lbl = Text(resolved);
+                lbl.TextWrapping = TextWrapping.NoWrap;
+                lbl.TextTrimming = TextTrimming.CharacterEllipsis;
+                lbl.Margin = new Thickness(0, 0, 6, 0);
+                if (!string.IsNullOrEmpty(resolved)) ToolTip.SetTip(lbl, resolved);
+                line.Children.Add(lbl);
                 stack.Children.Add(new Border { Background = idx++ % 2 == 1 ? UiKit.SurfaceZebra : Brushes.Transparent, Padding = new Thickness(8, 2, 7, 2), Child = line });
             }
             return stack;
@@ -408,9 +418,18 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
             headerCommands.Children.Add(unfreeze);
         }        HeaderHost.Content = UiKit.EntityBanner(s.DisplayName, badges, headerCommands, Host.Graphics.Image("person", s.Id, 72));
 
-        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,8,*,8,*") };
+        var columns = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 200 },
+                new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 200 },
+                new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 200 },
+            },
+            ColumnSpacing = 8,
+        };
         var col = new[] { new StackPanel { Spacing = 10 }, new StackPanel { Spacing = 10 }, new StackPanel { Spacing = 10 } };
-        for (int i = 0; i < 3; i++) { Grid.SetColumn(col[i], i * 2); columns.Children.Add(col[i]); }
+        for (int i = 0; i < 3; i++) { Grid.SetColumn(col[i], i); columns.Children.Add(col[i]); }
 
         var info = new List<(string, Control)>
         {
@@ -427,7 +446,7 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
         ComboBox LicenseBox(StaffLicense current)
         {
             var options = StaffDetailsMassEdit.Licenses;
-            var box = new ComboBox { ItemsSource = options.Select(o => Loc.S(o.Name)).ToList(), Width = 196, Height = 22, MinHeight = 22, FontSize = 12.5, Padding = new Thickness(6, 0) };
+            var box = new ComboBox { ItemsSource = options.Select(o => Loc.S(o.Name)).ToList(), Width = 184, Height = 24, MinHeight = 24, FontSize = 12.5, Padding = new Thickness(6, 0) };
             string original = ((int)current).ToString(Inv);
             int at = Array.FindIndex(options, o => ((int)o.Value).ToString(Inv) == draft.Changes.GetValueOrDefault("license", original));
             box.SelectedIndex = at;

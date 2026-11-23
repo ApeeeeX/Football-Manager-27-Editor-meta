@@ -27,7 +27,7 @@ internal sealed partial class MassEditWindow
             {
                 case Kind.StaffField:
                     rows.AddRange(Guarded(row.Label, () => StaffMassEdit.Plan(staff, (StaffMassField)row.Index, mode, (int)row.Number)
-                        .Select(c => MassRow.Change(c.Staff.DisplayName, row.Label, c.Before, c.After, () => { StaffMassEdit.Apply(c, session.Staff, session.StaffWriter); return 1; }))));
+                        .Select(c => MassRow.Change(c.Staff.DisplayName, row.Label, c.Before, c.After, () => { StaffMassEdit.Apply(c, session.Staff, session.StaffWriter); if (session.Staff.Reload(c.Staff.Address) is { } written) backend.AcceptFrozenStaffAbility(written); return 1; }))));
                     break;
                 case Kind.StaffAttribute:
                     rows.AddRange(Guarded(row.Label, () => StaffAttributeMassEdit.Plan(staff, (StaffAttribute)row.Index, mode, (int)row.Number, session.StaffWriter)
@@ -50,7 +50,7 @@ internal sealed partial class MassEditWindow
         }
         if (planMatchCaToPa)
             rows.AddRange(staff.Select(person => MassRow.Change(person.DisplayName, "Current Ability", person.CurrentAbility, person.PotentialAbility,
-                () => { session.StaffWriter.SetAbility(person, person.PotentialAbility, person.PotentialAbility); return 1; })));
+                () => { session.StaffWriter.SetAbility(person, person.PotentialAbility, person.PotentialAbility); if (session.Staff.Reload(person.Address) is { } written) backend.AcceptFrozenStaffAbility(written); return 1; })));
         return new MassPlan("Coach", staff.Count, rows);
     }
 

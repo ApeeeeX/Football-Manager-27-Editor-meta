@@ -48,9 +48,18 @@ public static partial class MacProcessDiscovery
         if (games.Count == 0)
             throw new GameNotRunningException(error is null
                 ? $"{moduleName} is not loaded yet"
-                : $"Cannot inspect {ExecutableName}: {error.Message}");
+                : $"Cannot inspect {ExecutableName}: {Explain(error.Message)}");
         return games;
     }
+
+    // KERN_FAILURE from task_for_pid, even for the root helper: the game uses the Hardened Runtime, and System Integrity
+    // Protection's debugging restrictions refuse access to such a process. Measured: access works with
+    // "Debugging Restrictions: disabled" in `csrutil status` and fails with code 5 when they are on.
+    internal static string Explain(string message) =>
+        System.Text.RegularExpressions.Regex.IsMatch(message, @"task_for_pid\(\d+\) failed with kern_return_t 5\b")
+            ? message + ". macOS blocks direct access to the Steam copy of the game while System Integrity Protection is on. " +
+              "Set up the editor plugin, then start the game again from Steam."
+            : message;
 
     /// <summary>Processes whose executable name is Football Manager 27 (or fm), with their executable paths.</summary>
     static unsafe List<(int Pid, string Path)> ListCandidates()

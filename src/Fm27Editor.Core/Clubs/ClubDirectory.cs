@@ -43,8 +43,23 @@ public static class ClubDirectory
         var teams = new HashSet<ulong>();
         foreach (var p in players)
         {
-            if (TryQ(memory, profile.PlayerField(p, t.PlayerTeam), out ulong pt) && pt != 0) teams.Add(pt);
-            if (p.Contract is { } k && TryQ(memory, k.Address + (ulong)c.Team, out ulong ct) && ct != 0) teams.Add(ct);
+            if (p.PlayingTeamAddress is { } pt)
+            {
+                if (pt != 0) teams.Add(pt);
+            }
+            else if (TryQ(memory, profile.PlayerField(p, t.PlayerTeam), out ulong readPt) && readPt != 0)
+            {
+                teams.Add(readPt);
+            }
+
+            if (p.ContractTeamAddress is { } ct)
+            {
+                if (ct != 0) teams.Add(ct);
+            }
+            else if (p.Contract is { } k && TryQ(memory, k.Address + (ulong)c.Team, out ulong readCt) && readCt != 0)
+            {
+                teams.Add(readCt);
+            }
         }
         return Build(memory, profile, moduleBase, teams, clubs: null);
     }
@@ -80,14 +95,19 @@ public static class ClubDirectory
         ulong clubVt = moduleBase + k.ClubVtableRva, teamVt = moduleBase + t.VtableRva;
         var clubSet = clubs?.ToHashSet() ?? [];
         var teamsByClub = new Dictionary<ulong, List<TeamEntry>>();
-        foreach (ulong team in teams)
+        var teamArray = teams as ulong[] ?? teams.ToArray();
+        int teamReadSize = Math.Max(c.TeamClub + 8, t.Squad + 24);
+        if (memory is ReadAheadMemory ram) ram.Prefetch(teamArray, teamReadSize);
+        var teamBuf = new byte[teamReadSize];
+        foreach (ulong team in teamArray)
         {
-            if (!TryQ(memory, team, out ulong tv) || tv != teamVt) continue;
-            if (!TryQ(memory, team + (ulong)c.TeamClub, out ulong club)) continue;
+            if (!memory.TryRead(team, teamBuf) || BitConverter.ToUInt64(teamBuf, 0) != teamVt) continue;
+            ulong club = BitConverter.ToUInt64(teamBuf, c.TeamClub);
             if (clubs is null && !clubSet.Contains(club) && TryQ(memory, club, out ulong cv) && cv == clubVt) clubSet.Add(club);
             if (!clubSet.Contains(club)) continue;
-            if (!TryQ(memory, team + (ulong)t.Squad, out ulong begin) || !TryQ(memory, team + (ulong)t.Squad + 8, out ulong end)
-                || !TryQ(memory, team + (ulong)t.Squad + 16, out ulong cap)) continue;
+            ulong begin = BitConverter.ToUInt64(teamBuf, t.Squad);
+            ulong end = BitConverter.ToUInt64(teamBuf, t.Squad + 8);
+            ulong cap = BitConverter.ToUInt64(teamBuf, t.Squad + 16);
             if (begin == 0 || end < begin || cap < end || (cap - begin) / 8 > MaxSquad) continue;
             int count = (int)((end - begin) / 8);
             // First team: its first squad player is contracted to the team itself (one check per team keeps the scan fast).
@@ -97,14 +117,17 @@ public static class ClubDirectory
             if (!teamsByClub.TryGetValue(club, out var list)) teamsByClub[club] = list = [];
             list.Add(new TeamEntry(team, club, begin, count, (int)((cap - begin) / 8), first));
         }
+        int clubReadSize = Math.Max(0xD0, k.Finance is { } fin ? fin.Pointer + 8 : 0xD0);
+        if (memory is ReadAheadMemory clubRam) clubRam.Prefetch(clubSet.ToArray(), clubReadSize);
+        var clubBuf = new byte[0xD0];
         return clubSet.Select(club =>
         {
-            var b = new byte[0xD0];
-            memory.TryRead(club, b);
+            Array.Clear(clubBuf);
+            memory.TryRead(club, clubBuf);
             ulong finance = k.Finance is { } f && TryQ(memory, club + (ulong)f.Pointer, out ulong fp) ? fp : 0;
-            return new ClubEntry(club, k.Id is { } id ? BitConverter.ToInt32(b, id) : null,
-                StringAt(memory, BitConverter.ToUInt64(b, k.Name)), StringAt(memory, BitConverter.ToUInt64(b, k.ShortName)),
-                finance, teamsByClub.TryGetValue(club, out var ts) ? ts : [], GenderReader.FromClubBytes(b, k.Gender));
+            return new ClubEntry(club, k.Id is { } id ? BitConverter.ToInt32(clubBuf, id) : null,
+                StringAt(memory, BitConverter.ToUInt64(clubBuf, k.Name)), StringAt(memory, BitConverter.ToUInt64(clubBuf, k.ShortName)),
+                finance, teamsByClub.TryGetValue(club, out var ts) ? ts : [], GenderReader.FromClubBytes(clubBuf, k.Gender));
         }).ToList();
     }
 

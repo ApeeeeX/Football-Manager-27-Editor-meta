@@ -517,8 +517,8 @@ public sealed class App : Application
             Setters =
             {
                 new Setter(TemplatedControl.PaddingProperty, new Thickness(0)),
-                new Setter(Layoutable.HeightProperty, 24.0),
-                new Setter(Layoutable.MinHeightProperty, 24.0),
+                new Setter(Layoutable.HeightProperty, 26.0),
+                new Setter(Layoutable.MinHeightProperty, 26.0),
                 new Setter(TemplatedControl.FontSizeProperty, 13.0),
                 new Setter(Layoutable.VerticalAlignmentProperty, VerticalAlignment.Center),
             }
@@ -528,13 +528,13 @@ public sealed class App : Application
         {
             Setters =
             {
-                new Setter(Layoutable.HeightProperty, 24.0),
-                new Setter(Layoutable.MinHeightProperty, 24.0),
+                new Setter(Layoutable.HeightProperty, 26.0),
+                new Setter(Layoutable.MinHeightProperty, 26.0),
                 new Setter(TemplatedControl.FontSizeProperty, 13.0),
                 new Setter(TemplatedControl.BackgroundProperty, surfaceInput),
                 new Setter(TemplatedControl.BorderBrushProperty, borderControl),
                 new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(1)),
-                new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(3)),
+                new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(4)),
                 new Setter(Layoutable.VerticalAlignmentProperty, VerticalAlignment.Center),
             }
         });

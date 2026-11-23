@@ -70,10 +70,8 @@ public sealed class ClubListReader(IProcessMemory memory, OffsetProfile profile,
         if (Layout is not { } l || profile.Team is not { } t || !Vtable(teamAddress, t.VtableRva)
             || !Fits(l.CultureSize, (0, 8), (l.VisionType, 1), (l.Importance, 1), (l.VisionStart, 4),
                 (l.VisionEnd, 4), (l.ItemIndex, 2), (l.ItemMarker, 2))) return [];
-        ulong detail = PointerAt(teamAddress, l.TeamDetails);
-        if (detail == 0) return [];
-        ulong holder = PointerAt(detail, l.Vision);
-        if (holder == 0 || !l.AcceptsHolderVtable(Rva(Q(holder)))) return [];
+        if (ReadVisionHolder(teamAddress, l) is not { } owner) return [];
+        var (detail, holder) = owner;
         ulong header = PointerAt(holder, l.VisionVector);
         if (header == 0 || VectorSnapshot(header) is not { } vector) return [];
         var result = new List<ClubVisionEntry>();
@@ -119,6 +117,48 @@ public sealed class ClubListReader(IProcessMemory memory, OffsetProfile profile,
                 itemName, itemKind));
         }
         return result.AsReadOnly();
+    }
+
+    internal (DateOnly? Expansion, DateOnly? Review) ReadStadiumBoardRequests(ulong club, StadiumBoardRequestOffsets offsets, DateOnly today)
+    {
+        const ushort expandGround = 3000, buildNewGround = 3001;
+        if (Layout is not { } layout || profile.Team is not { } team ||
+            VectorSnapshot(Field(club, layout.Teams)) is not { Pointers: [var firstTeam, ..] } ||
+            !Vtable(firstTeam, team.VtableRva) || ReadVisionHolder(firstTeam, layout) is not { } owner ||
+            Bytes(Field(owner.Holder, offsets.HolderType), 1) is not [1 or 3 or 4])
+            return (null, null);
+
+        ulong requests = PointerAt(owner.Holder, offsets.Requests);
+        if (VectorSnapshot(Field(requests, offsets.Vector)) is not { } vector)
+            return (null, null);
+
+        int size = Math.Max(Math.Max(offsets.RequestType + 2, offsets.Flags + 1),
+            Math.Max(offsets.TargetDate + 4, offsets.CompletedDate + 4));
+        if (!Fits(size, (offsets.RequestType, 2), (offsets.Flags, 1), (offsets.TargetDate, 4), (offsets.CompletedDate, 4)))
+            return (null, null);
+
+        DateOnly? expansion = null, review = null;
+        for (int i = vector.Pointers.Length - 1; i >= 0; i--)
+        {
+            if (Bytes(vector.Pointers[i], size) is not { } row || (row[offsets.Flags] & 1) != 0 ||
+                Date(row, offsets.CompletedDate) is not null || Date(row, offsets.TargetDate) is not { } date || date < today)
+                continue;
+
+            switch (BitConverter.ToUInt16(row, offsets.RequestType))
+            {
+                case expandGround: expansion ??= date; break;
+                case buildNewGround: review ??= date; break;
+            }
+            if (expansion is not null && review is not null) break;
+        }
+        return (expansion, review);
+    }
+
+    (ulong Detail, ulong Holder)? ReadVisionHolder(ulong team, ClubListOffsets layout)
+    {
+        ulong detail = PointerAt(team, layout.TeamDetails);
+        ulong holder = PointerAt(detail, layout.Vision);
+        return holder != 0 && layout.AcceptsHolderVtable(Rva(Q(holder))) ? (detail, holder) : null;
     }
 
     public IReadOnlyList<ClubAffiliationEntry> ReadAffiliations(ulong clubAddress)

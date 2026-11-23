@@ -63,9 +63,42 @@ public sealed class LanguageReader(IProcessMemory memory, OffsetProfile profile,
     }
 
     /// <summary>Every language some loaded player speaks, by name: the choices for Add.</summary>
-    public IReadOnlyList<LanguageEntry> Catalogue(IEnumerable<PlayerRecord> players) =>
-        players.SelectMany(Read).Where(l => l.Name is not null).DistinctBy(l => l.LanguageObject)
-            .Select(l => new LanguageEntry(l.LanguageObject, l.LanguageId, l.Name!)).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<LanguageEntry> Catalogue(IEnumerable<PlayerRecord> players)
+    {
+        if (profile.Languages is not { } o) return [];
+        var owners = new List<PersonOwner>();
+        foreach (var p in players) owners.Add(PersonOwner.Of(p, profile));
+        if (memory is ReadAheadMemory ram && owners.Count > 0)
+        {
+            int maxInsertion = profile.PlayerInsertions.Count > 0 ? profile.PlayerInsertions.Values.Max(i => i.Length) : 0;
+            int vectorSpan = Math.Max(8, o.Vector + 16 + maxInsertion);
+            var addrs = new ulong[owners.Count];
+            for (int i = 0; i < owners.Count; i++) addrs[i] = owners[i].Address;
+            ram.Prefetch(addrs, vectorSpan);
+        }
+        var seen = new HashSet<ulong>();
+        var entries = new List<LanguageEntry>();
+        var recordBytes = new byte[o.RecordSize];
+        var languageBytes = new byte[Math.Max(o.LanguageId + 4, o.LanguageName + 8)];
+        foreach (var owner in owners)
+        {
+            if (!owner.IsValid(memory, moduleBase)) continue;
+            ulong vector = owner.At(o.Vector);
+            if (!Q(vector, out ulong begin) || !Q(vector + 8, out ulong end) || begin == 0) continue;
+            if (end < begin || (end - begin) % 8 != 0 || (end - begin) / 8 > MaxLanguages) continue;
+            for (ulong p = begin; p < end; p += 8)
+            {
+                if (!Q(p, out ulong record) || record == 0 || !memory.TryRead(record, recordBytes)) continue;
+                ulong language = BitConverter.ToUInt64(recordBytes, o.Language);
+                if (language == 0 || !seen.Add(language)) continue;
+                if (!Q(language, out ulong languageVt) || languageVt != moduleBase + o.LanguageVtable) continue;
+                if (!memory.TryRead(language, languageBytes)) continue;
+                if (StringAt(BitConverter.ToUInt64(languageBytes, o.LanguageName)) is { } name)
+                    entries.Add(new LanguageEntry(language, BitConverter.ToInt32(languageBytes, o.LanguageId), name));
+            }
+        }
+        return entries.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
 
     string? StringAt(ulong p)
     {

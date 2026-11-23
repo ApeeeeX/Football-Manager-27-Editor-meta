@@ -47,10 +47,14 @@ public sealed partial class MainWindow
                     AddRow(ProjectName(project.Kind), due ? Loc.S("Due today") : Loc.F("Due {0}", date),
                         due || !session.CanWrite ? null : ActionButton("Finish today", () => FinishAsync([project], overview.Today)));
                 }
+                if (overview.AnnouncedExpansionDate is { } expansion)
+                    AddRow("Stadium expansion", Loc.F("Announced · Due {0}", DateSetting.Format(expansion)), null);
                 if (overview.Planning is { } plan)
-                    AddRow("New stadium", plan.ExpiryDate is { } date
-                        ? Loc.F("Planning · Expires {0}", DateSetting.Format(date))
-                        : Loc.S("Planning · Expiry date unknown"), null);
+                    AddRow("New stadium", plan.ReviewDate is { } review
+                        ? Loc.F("Planning · Review by {0}", DateSetting.Format(review))
+                        : plan.ExpiryDate is { } expiry
+                            ? Loc.F("Planning · Expires {0}", DateSetting.Format(expiry))
+                            : Loc.S("Planning · Expiry date unknown"), null);
 
                 var pending = overview.Scheduled.Where(project => project.ScheduledDate > overview.Today).ToArray();
                 if (session.CanWrite && pending.Length > 1)

@@ -11,9 +11,13 @@ public sealed class FrozenStaff
     public ulong Address { get; }
     public ulong StaffAddress { get; }
     public IReadOnlyCollection<FrozenStaffAttribute> Fields => fields.Values;
+    /// <summary>CA held at this value; null when not frozen. PA is never frozen: the game does not raise it.</summary>
+    public short? CurrentAbility { get; private set; }
 
-    public FrozenStaff(int id, ulong address, ulong staffAddress, IEnumerable<FrozenStaffAttribute> attributes)
+    public FrozenStaff(int id, ulong address, ulong staffAddress, IEnumerable<FrozenStaffAttribute> attributes, short? currentAbility = null)
     {
+        if (currentAbility is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(currentAbility));
+        CurrentAbility = currentAbility;
         if (id <= 0 || address == 0) throw new ArgumentOutOfRangeException(nameof(id));
         Id = id;
         Address = address;
@@ -25,7 +29,8 @@ public sealed class FrozenStaff
 
     public static FrozenStaff Capture(StaffRecord staff, IEnumerable<(StaffAttribute Attribute, FreezeMode Mode)> attributes) =>
         new(staff.Id, staff.Address, staff.StaffAddress,
-            attributes.Select(a => new FrozenStaffAttribute(a.Attribute, (byte)staff.Attribute(a.Attribute), a.Mode)));
+            attributes.Select(a => new FrozenStaffAttribute(a.Attribute, (byte)staff.Attribute(a.Attribute), a.Mode)),
+            staff.CurrentAbility is >= 1 and <= 200 ? staff.CurrentAbility : null);
 
     public static IEnumerable<(StaffAttribute Attribute, FreezeMode Mode)> AllAttributes(StaffRecord staff)
     {
@@ -46,6 +51,14 @@ public sealed class FrozenStaff
         return true;
     }
 
+    /// <summary>A deliberate editor change of CA becomes the new frozen CA; false when CA is not frozen or is unchanged.</summary>
+    public bool AcceptAbilityEdit(StaffRecord staff)
+    {
+        if (CurrentAbility is not { } frozen || staff.CurrentAbility == frozen || staff.CurrentAbility is < 1 or > 200) return false;
+        CurrentAbility = staff.CurrentAbility;
+        return true;
+    }
+
     public int Reconcile(StaffRepository repo, StaffWriter writer)
     {
         var current = repo.Reload(Address);
@@ -62,6 +75,11 @@ public sealed class FrozenStaff
             }
             if (value == field.Value) continue;
             writer.SetAttribute(current, field.Attribute, field.Value);
+            writes++;
+        }
+        if (CurrentAbility is { } ability && current.CurrentAbility != ability)
+        {
+            writer.SetCurrentAbility(current, ability);
             writes++;
         }
         return writes;

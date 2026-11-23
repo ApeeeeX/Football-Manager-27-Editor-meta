@@ -200,25 +200,47 @@ public sealed class CompleteLoadTests
 
             void Drag(Control from, Control to, bool toRight)
             {
-                var start = from.TranslatePoint(new Point(8, from.Bounds.Height / 2), window)!.Value;
-                var end = to.TranslatePoint(new Point(to.Bounds.Width * (toRight ? .75 : .25), to.Bounds.Height / 2), window)!.Value;
                 if (!OperatingSystem.IsWindows())
                 {
-                    window.MouseMove(start);
-                    window.MouseDown(start, MouseButton.Left, RawInputModifiers.None);
+                    // Wait for hit-testing to see the current order after a move.
+                    for (int frame = 0; frame < 10 && (!Hits(from, Start()) || !Hits(to, End())); frame++)
+                    {
+                        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                        Dispatcher.UIThread.RunJobs();
+                    }
+                    var start = Start();
+                    var end = End();
+                    Assert.True(Hits(from, start));
+                    Assert.True(Hits(to, end));
+                    // Send the same platform mouse input without the extension methods'
+                    // dispatcher drain, which can loop while the render timer posts jobs.
+                    var platform = window.PlatformImpl!;
+                    var input = platform.GetType().GetInterface("Avalonia.Headless.IHeadlessWindow")!;
+                    var move = input.GetMethod("MouseMove")!.CreateDelegate<Action<Point, RawInputModifiers>>(platform);
+                    var down = input.GetMethod("MouseDown")!.CreateDelegate<Action<Point, MouseButton, RawInputModifiers>>(platform);
+                    var up = input.GetMethod("MouseUp")!.CreateDelegate<Action<Point, MouseButton, RawInputModifiers>>(platform);
+                    move(start, RawInputModifiers.None);
+                    down(start, MouseButton.Left, RawInputModifiers.None);
                     Assert.True(TabField<object?>(app, "tabDrag") is not null,
                         $"No drag at {start}. Hit: {window.InputHitTest(start)}, source bounds {from.Bounds}, viewport {TabField<ScrollViewer>(app, "entityScroll").Viewport}");
-                    window.MouseMove(end, RawInputModifiers.LeftMouseButton);
-                    window.MouseUp(end, MouseButton.Left, RawInputModifiers.None);
+                    move(end, RawInputModifiers.LeftMouseButton);
+                    up(end, MouseButton.Left, RawInputModifiers.None);
                     return;
                 }
+                var startPosition = Start();
+                var endPosition = End();
                 var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true);
                 var pressed = new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed);
                 var moved = new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.Other);
                 var released = new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonReleased);
-                from.RaiseEvent(new PointerPressedEventArgs(from, pointer, window, start, 1, pressed, KeyModifiers.None));
-                from.RaiseEvent(new PointerEventArgs(InputElement.PointerMovedEvent, from, pointer, window, end, 2, moved, KeyModifiers.None));
-                from.RaiseEvent(new PointerReleasedEventArgs(from, pointer, window, end, 3, released, KeyModifiers.None, MouseButton.Left));
+                from.RaiseEvent(new PointerPressedEventArgs(from, pointer, window, startPosition, 1, pressed, KeyModifiers.None));
+                from.RaiseEvent(new PointerEventArgs(InputElement.PointerMovedEvent, from, pointer, window, endPosition, 2, moved, KeyModifiers.None));
+                from.RaiseEvent(new PointerReleasedEventArgs(from, pointer, window, endPosition, 3, released, KeyModifiers.None, MouseButton.Left));
+
+                Point Start() => from.TranslatePoint(new Point(8, from.Bounds.Height / 2), window)!.Value;
+                Point End() => to.TranslatePoint(new Point(to.Bounds.Width * (toRight ? .75 : .25), to.Bounds.Height / 2), window)!.Value;
+                bool Hits(Control tab, Point point) => window.InputHitTest(point) is Visual hit &&
+                    (hit == tab || tab.IsVisualAncestorOf(hit));
             }
         });
     }

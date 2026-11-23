@@ -26,6 +26,8 @@ public sealed class PlayerRecord
 
     /// <summary>Null when the profile has no contract offsets or the player has no contract.</summary>
     public ContractInfo? Contract { get; init; }
+    public ulong? PlayingTeamAddress { get; init; }
+    public ulong? ContractTeamAddress { get; init; }
     public ClubInfo? Club => Contract?.Club;
     public NationInfo? Nationality { get; init; }
     public CompetitionInfo? Division { get; init; }

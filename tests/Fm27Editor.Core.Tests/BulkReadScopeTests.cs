@@ -163,6 +163,79 @@ public class BulkReadScopeTests
         Assert.Equal(writes, world.Memory.Writes);
     }
 
+    [Fact]
+    public void Prefetch_merges_contiguous_pages_and_tolerates_unreadable_gaps()
+    {
+        var raw = new FakeMemory();
+        var contig = raw.Map(0x1000, 4 * 4096);
+        contig[4] = 11;
+        contig[4096 + 16] = 22;
+        contig[2 * 4096 + 32] = 33;
+        contig[3 * 4096 + 48] = 44;
+        raw.Map(0x8000, 4096)[8] = 88;
+        var probe = new Probe(raw);
+
+        using var reads = new BulkReadScope(probe);
+        Assert.Equal(4096, ReadAheadMemory.PageSize);
+
+        reads.Prefetch([0x1004, 0x2010, 0x3020, 0x4030, 0x6000, 0x8008], 32);
+
+        Assert.Equal(new byte[] { 11 }, reads.Memory.Read(0x1004, 1));
+        Assert.Equal(new byte[] { 22 }, reads.Memory.Read(0x2010, 1));
+        Assert.Equal(new byte[] { 33 }, reads.Memory.Read(0x3020, 1));
+        Assert.Equal(new byte[] { 44 }, reads.Memory.Read(0x4030, 1));
+        Assert.Equal(new byte[] { 88 }, reads.Memory.Read(0x8008, 1));
+        Assert.False(reads.Memory.TryRead(0x6000, new byte[1]));
+
+        Assert.Contains((0x1000UL, 4 * 4096), probe.Requests);
+        Assert.DoesNotContain((0x2000UL, 4096), probe.Requests);
+        Assert.DoesNotContain((0x3000UL, 4096), probe.Requests);
+        Assert.DoesNotContain((0x4000UL, 4096), probe.Requests);
+    }
+
+    [Fact]
+    public void Prefetch_bridges_small_gaps_without_caching_gap_pages_and_falls_back_on_unreadable_gaps()
+    {
+        var raw = new FakeMemory();
+        var blk1 = raw.Map(0x1_0000, 6 * 4096);
+        blk1[8] = 11;
+        blk1[3 * 4096 + 8] = 33;
+        blk1[5 * 4096 + 8] = 55;
+        var blk2a = raw.Map(0x2_0000, 2 * 4096);
+        blk2a[0] = 71;
+        blk2a[4096] = 72;
+        var blk2b = raw.Map(0x2_4000, 2 * 4096);
+        blk2b[0] = 73;
+        blk2b[4096] = 74;
+
+        var probe = new Probe(raw);
+        using (var reads = new BulkReadScope(probe))
+        {
+            reads.Prefetch([0x1_0000, 0x1_3000, 0x1_5000], 32);
+            Assert.Contains((0x1_0000UL, 6 * 4096), probe.Requests);
+            Assert.Equal(3 * 4096, ((ReadAheadMemory)reads.Memory).CachedBytes);
+            int before = probe.Requests.Count;
+            Assert.Equal(new byte[] { 11 }, reads.Memory.Read(0x1_0008, 1));
+            Assert.Equal(new byte[] { 33 }, reads.Memory.Read(0x1_3008, 1));
+            Assert.Equal(new byte[] { 55 }, reads.Memory.Read(0x1_5008, 1));
+            Assert.Equal(before, probe.Requests.Count);
+        }
+
+        probe.Requests.Clear();
+        using (var reads2 = new BulkReadScope(probe))
+        {
+            reads2.Prefetch([0x2_0000, 0x2_1000, 0x2_4000, 0x2_5000], 32);
+            Assert.Contains((0x2_0000UL, 2 * 4096), probe.Requests);
+            Assert.Contains((0x2_4000UL, 2 * 4096), probe.Requests);
+            int before = probe.Requests.Count;
+            Assert.Equal(new byte[] { 71 }, reads2.Memory.Read(0x2_0000, 1));
+            Assert.Equal(new byte[] { 72 }, reads2.Memory.Read(0x2_1000, 1));
+            Assert.Equal(new byte[] { 73 }, reads2.Memory.Read(0x2_4000, 1));
+            Assert.Equal(new byte[] { 74 }, reads2.Memory.Read(0x2_5000, 1));
+            Assert.Equal(before, probe.Requests.Count);
+        }
+    }
+
     sealed class Probe(IProcessMemory source) : IProcessMemory
     {
         public List<(ulong Address, int Length)> Requests { get; } = [];

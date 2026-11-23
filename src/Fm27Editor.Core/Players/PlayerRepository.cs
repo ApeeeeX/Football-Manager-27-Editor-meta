@@ -19,6 +19,48 @@ public sealed class PlayerRepository(IProcessMemory memory, OffsetProfile profil
         var pointers = ReadPointerArray();
         var reader = new PlayerReader(memory, profile) { ModuleBase = moduleBase };
         var vtables = profile.PlayerVtableRvas.Select(v => moduleBase + v).ToHashSet();
+        if (memory is ReadAheadMemory ram)
+        {
+            int insertionTail = profile.PlayerInsertions.Count > 0 ? profile.PlayerInsertions.Values.Max(i => i.Length) : 0;
+            ram.Prefetch(pointers, profile.PlayerObjectSize + insertionTail);
+            var f = profile.Fields;
+            var namePointers = new List<ulong>(pointers.Length * 2);
+            var seenNames = new HashSet<ulong>();
+            var contracts = profile.Contract is not null ? new List<ulong>(pointers.Length) : null;
+            Span<byte> word = stackalloc byte[8];
+            static int Shift(PlayerInsertion ins, bool hasIns, int offset) =>
+                hasIns && offset >= ins.At ? offset + ins.Length : offset;
+            static void AddNamePtr(IProcessMemory mem, ulong addr, List<ulong> targets, HashSet<ulong> seen, Span<byte> buf)
+            {
+                if (mem.TryRead(addr, buf))
+                {
+                    ulong ptr = BitConverter.ToUInt64(buf);
+                    if (ptr != 0 && seen.Add(ptr)) targets.Add(ptr);
+                }
+            }
+            foreach (ulong p in pointers)
+            {
+                if (p == 0 || !memory.TryRead(p, word)) continue;
+                ulong vt = BitConverter.ToUInt64(word);
+                if (!vtables.Contains(vt)) continue;
+                uint rva = (uint)(vt - moduleBase);
+                bool hasIns = profile.PlayerInsertions.TryGetValue(rva, out var ins);
+                if (contracts is not null &&
+                    memory.TryRead(p + (ulong)Shift(ins, hasIns, profile.Contract!.PlayerContract), word))
+                {
+                    ulong ptr = BitConverter.ToUInt64(word);
+                    if (ptr != 0) contracts.Add(ptr);
+                }
+                if (f.FullName >= 0) AddNamePtr(memory, p + (ulong)Shift(ins, hasIns, f.FullName), namePointers, seenNames, word);
+                if (f.FirstName >= 0) AddNamePtr(memory, p + (ulong)Shift(ins, hasIns, f.FirstName), namePointers, seenNames, word);
+                if (f.LastName >= 0) AddNamePtr(memory, p + (ulong)Shift(ins, hasIns, f.LastName), namePointers, seenNames, word);
+                if (f.CommonName >= 0) AddNamePtr(memory, p + (ulong)Shift(ins, hasIns, f.CommonName), namePointers, seenNames, word);
+            }
+            if (contracts is { Count: > 0 })
+                ram.Prefetch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(contracts), 0x60);
+            if (namePointers.Count > 0)
+                ram.Prefetch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(namePointers), 64);
+        }
         var obj = new byte[profile.PlayerObjectSize];
         var result = new List<PlayerRecord>(pointers.Length);
         foreach (var p in pointers)

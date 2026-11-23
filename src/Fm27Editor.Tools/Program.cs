@@ -111,6 +111,7 @@ try
         "allowhuman" => AllowHumanCommand(),
         "allowances" => AllowancesCommand(args[1..]),
         "ptrdump" => AllowProbe.Run(Attach(writable: false), args[1..]),
+    "pluginsetup" => PluginSetupCommand(args.Contains("--install")),
     "codepatch" => AllowProbe.Patch(Attach(writable: args.Length > 2), args[1..]),
         "allowat" => AllowAtCommand(Convert.ToUInt64(args[1].Replace("0x", ""), 16)),
         "nationtv" => NationTvCommand(args[1..]),
@@ -6068,6 +6069,17 @@ int CompVarCommand(string[] args)
         var after = session.CompetitionVar.Read(competition)!;
         Console.WriteLine($"read back: type {after.Type} TV {after.TvOnly} enabled {after.Enabled} from {after.FromDate?.ToString("yyyy-MM-dd") ?? "none"}");
     }
+    return 0;
+}
+
+// pluginsetup [--install]   macOS: whether the Steam copy needs the in-game plugin; --install sets it up (Steam must be closed)
+int PluginSetupCommand(bool install)
+{
+    Console.WriteLine($"debugging restricted: {Fm27Editor.Core.Game.MacPluginSetup.DebuggingRestricted()}");
+    Console.WriteLine($"state: {Fm27Editor.Core.Game.MacPluginSetup.State()}");
+    Console.WriteLine($"plugin: {Fm27Editor.Core.Game.MacPluginSetup.InstalledPluginPath}");
+    if (!install) return 0;
+    Console.WriteLine($"set up {Fm27Editor.Core.Game.MacPluginSetup.Install()} Steam account(s)");
     return 0;
 }
 

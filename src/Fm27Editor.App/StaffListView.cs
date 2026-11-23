@@ -67,14 +67,14 @@ public sealed partial class MainWindow
         var grid = ToolGrid.Create();
         grid.ItemsSource = rows;
         ToolGrid.AddTick<StaffListRow>(grid, excluded, r => r.Staff.Address, () => rows, () => updateCount?.Invoke());
-        grid.Columns.Add(ToolGrid.Text<StaffListRow>("Job", r => r.Job, 150, "Job"));
-        grid.Columns.Add(ToolGrid.Text<StaffListRow>("Name", r => r.Name, 0, "Staff name", "#F1F5F9", bold: true, minWidth: 130));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("Age", r => r.Age?.ToString(CultureInfo.InvariantCulture) ?? "", 41, "Age"));
-        grid.Columns.Add(ToolGrid.Text<StaffListRow>("Team", r => r.Team, 110, "Team"));
-        grid.Columns.Add(ToolGrid.Text<StaffListRow>("Nat", r => r.Nation, 118, "Nationality"));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("CA", r => r.CA.ToString(CultureInfo.InvariantCulture), 41, "Current Ability"));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("PA", r => r.PA.ToString(CultureInfo.InvariantCulture), 41, "Potential Ability"));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("Expires", r => r.Expires, 92, scope.Name == "Club" ? "Club contract expiry" : "National contract expiry"));
+        grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Job", r => r.Job, 1.1, 100, "Job"));
+        grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Name", r => r.Name, 1.4, 120, "Staff name", "#F1F5F9", bold: true));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("Age", r => r.Age?.ToString(CultureInfo.InvariantCulture) ?? "", 36, "Age"));
+        grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Team", r => r.Team, 0.8, 76, "Team"));
+        grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Nat", r => r.Nation, 0.85, 80, "Nationality"));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("CA", r => r.CA.ToString(CultureInfo.InvariantCulture), 36, "Current Ability"));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("PA", r => r.PA.ToString(CultureInfo.InvariantCulture), 36, "Potential Ability"));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("Expires", r => r.Expires, 84, scope.Name == "Club" ? "Club contract expiry" : "National contract expiry"));
         var keys = new Dictionary<string, Func<StaffListRow, IComparable?>>
         {
             ["Job"] = r => r.Job.ToLowerInvariant(),
@@ -92,14 +92,16 @@ public sealed partial class MainWindow
             if (UiKit.OnRow(e) && grid.SelectedItem is StaffListRow r) OpenClubStaff(r.Staff);
         };
 
-        var count = new TextBlock { FontSize = 12, Foreground = UiKit.Brush("#94A3B8"), Margin = new Thickness(1, 0, 0, 4) };
-        var backroom = new Button { Content = Loc.S("Build a Backroom Team"), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
+        var count = new TextBlock { FontSize = 12, Foreground = UiKit.Brush("#94A3B8"), Margin = new Thickness(1, -2, 0, 4) };
         StaffRecord[] Chosen() => rows.Where(r => !excluded.Contains(r.Staff.Address)).Select(r => r.Staff).ToArray();
+        Button? backroom = club is { } clubAddress
+            ? ToolGrid.ToolButton("Build a Backroom Team", () => _ = ShowBackroomTeamAsync(clubAddress, Chosen(), refresh))
+            : null;
         updateCount = () =>
         {
             int included = rows.Count(r => !excluded.Contains(r.Staff.Address));
             count.Text = included == 1 ? Loc.S("( 1 Staff )") : Loc.F("( {0} Staff )", included);
-            if (club.HasValue) backroom.IsEnabled = Chosen().Any(staff => BackroomTeam.DepartmentOf(staff).HasValue);
+            if (backroom is not null) backroom.IsEnabled = Chosen().Any(staff => BackroomTeam.DepartmentOf(staff).HasValue);
         };
         updateCount();
 
@@ -125,41 +127,49 @@ public sealed partial class MainWindow
             if (done > 0) refresh();
         }
 
-        Button Tool(string text, string action, Action<StaffRecord, DateOnly> operation)
+        void RunFreeze(string label, Action<StaffRecord> operation)
         {
-            var b = new Button
-            {
-                Content = Loc.S(text), FontSize = 12.5, Height = 24, MinHeight = 24, Padding = new Thickness(3, 0),
-                VerticalContentAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Center,
-            };
-            b.Click += (_, _) => Run(action, operation);
-            return b;
+            var chosen = Chosen();
+            if (chosen.Length == 0) { status.Text = Loc.S("No staff ticked"); return; }
+            int done = 0;
+            var failed = new List<string>();
+            using (backend.Edits.Group("Staff", Loc.S("Bulk Edit"), Loc.S(label)))
+                foreach (var s in chosen)
+                {
+                    try { backend.Edits.Execute(() => operation(s)); done++; }
+                    catch (Exception ex) { failed.Add($"{s.DisplayName}: {UserMessage.For(ex)}"); }
+                }
+            status.Text = failed.Count == 0
+                ? Loc.F("{0}: applied to {1:N0} staff", Loc.S(label), done)
+                : Loc.F("{0}: {1:N0} ok, {2:N0} failed ({3})", Loc.S(label), done, failed.Count, string.Join("; ", failed.Take(3)));
         }
-        var pair = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 8 };
-        var minus = Tool("−1 Year", "−1 Year", (s, _) => scope.Shift(s, -1));
-        var plus = Tool("+1 Year", "+1 Year", (s, _) => scope.Shift(s, 1));
-        Grid.SetColumn(minus, 0); Grid.SetColumn(plus, 1);
-        pair.Children.Add(minus); pair.Children.Add(plus);
+
+        var pair = ToolGrid.ToolPair(
+            ToolGrid.ToolButton("−1 Year", () => Run("−1 Year", (s, _) => scope.Shift(s, -1))),
+            ToolGrid.ToolButton("+1 Year", () => Run("+1 Year", (s, _) => scope.Shift(s, 1))));
         var tools = new StackPanel
         {
-            Spacing = 8, Margin = new Thickness(8, 8),
-            Children = { count, Tool("Renew for 4 Years", "Renew for 4 Years", (s, today) => scope.Renew(s, 4, today)), Tool("Make it expire", "Make it expire", (s, today) => scope.Expire(s, today)), pair },
+            Spacing = 5,
+            Margin = new Thickness(7, 7),
+            Children =
+            {
+                count,
+                ToolGrid.ToolSectionHeader("CONTRACT"),
+                ToolGrid.ToolButton("Renew for 4 Years", () => Run("Renew for 4 Years", (s, today) => scope.Renew(s, 4, today))),
+                ToolGrid.ToolButton("Make it expire", () => Run("Make it expire", (s, today) => scope.Expire(s, today))),
+                pair,
+            },
         };
-        if (club is { } clubAddress)
-        {
-            backroom.Click += async (_, _) => await ShowBackroomTeamAsync(clubAddress, Chosen(), refresh);
+        if (backroom is not null)
             tools.Children.Insert(1, backroom);
-        }
+        if (club.HasValue && backend.Freezer is { } freezer)
+            tools.Children.Insert(backroom is null ? 1 : 2, ToolGrid.ToolPair(
+                ToolGrid.ToolButton("Freeze", () => RunFreeze("Freeze", s => freezer.SetStaff(s, FrozenStaff.AllAttributes(s))),
+                    "Keeps the ticked staff's attributes and Current Ability from changing while you play."),
+                ToolGrid.ToolButton("Unfreeze", () => RunFreeze("Unfreeze", s => freezer.RemoveStaff(s.Id)),
+                    "Lets the ticked staff's attributes and Current Ability change again.")));
         var card = UiKit.Card("Tools", tools);
-        card.Width = 196;
-        card.VerticalAlignment = VerticalAlignment.Top;
-        card.Margin = new Thickness(10, 0, 0, 0);
-
-        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        Grid.SetColumn(grid, 0); layout.Children.Add(grid);
-        Grid.SetColumn(card, 1); layout.Children.Add(card);
-        return layout;
+        return ToolGrid.WithTools(grid, card);
     }
 
     Control IScreenHost.BuildStaffTable(IReadOnlyList<StaffListRow> rows, IStaffContractScope scope, Action refresh) => BuildStaffTable(rows, scope, refresh);

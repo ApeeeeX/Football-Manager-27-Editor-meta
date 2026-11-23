@@ -8,6 +8,97 @@ namespace Fm27Editor.Core.Tests;
 public class ClubProjectsTests
 {
     [Theory]
+    [InlineData("27.1.0+2505117-mac.json", 0x5785440u, 0x56C2070u)]
+    [InlineData("27.1.0+2505719-touch-mac.json", 0x592DF00u, 0x58679F0u)]
+    public void Reads_announced_ground_projects_before_the_finance_queue_and_prefers_queued_expansion(
+        string build, uint financeRoot, uint financeVtable)
+    {
+        var installed = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", build));
+        var profile = OffsetProfile.Load(installed.ToJson());
+        var memory = new FakeMemory();
+        const ulong module = TestWorld.ModuleBase, clubAddress = 0x6200_0000, finance = 0x6201_0000;
+        const ulong team = 0x6202_0000, teamSlots = 0x6203_0000, details = 0x6204_0000, holder = 0x6205_0000;
+        const ulong requests = 0x6206_0000, requestSlots = 0x6207_0000, expansions = 0x6208_0000;
+        var club = new ClubEntry(clubAddress, 680, "Manchester United", null, 0, []);
+        var clubBytes = memory.Map(clubAddress, 0x80);
+        TestWorld.Set64(clubBytes, 0, module + profile.Club!.ClubVtableRva);
+        BitConverter.GetBytes(680).CopyTo(clubBytes, profile.Club.Id!.Value);
+        TestWorld.Set64(clubBytes, 0x18, teamSlots);
+        TestWorld.Set64(clubBytes, 0x20, teamSlots + 8);
+        TestWorld.Set64(clubBytes, 0x28, teamSlots + 8);
+        TestWorld.Set64(memory.Map(teamSlots, 8), 0, team);
+        var teamBytes = memory.Map(team, 0xA8);
+        TestWorld.Set64(teamBytes, 0, module + profile.Team!.VtableRva);
+        TestWorld.Set64(teamBytes, 0xA0, details);
+        TestWorld.Set64(memory.Map(details, 0xD0), 0xC8, holder);
+        var holderBytes = memory.Map(holder, 0x80);
+        TestWorld.Set64(holderBytes, 0, module + profile.Club.Lists!.VisionHolderVtable);
+        holderBytes[0x74] = 4;
+        TestWorld.Set64(holderBytes, 0x78, requests);
+
+        var board = memory.Map(requests, 0x30);
+        TestWorld.Set64(board, 0x18, requestSlots);
+        TestWorld.Set64(board, 0x20, requestSlots + 32);
+        TestWorld.Set64(board, 0x28, requestSlots + 32);
+        var slots = memory.Map(requestSlots, 32);
+        MapRequest(0, 3000, 0x07EB12C4, 0x076C0001, 0); // 15 July 2027, 196th day (plus flags)
+        MapRequest(1, 3001, 0x07EC00A7, 0x076C0001, 0); // 15 June 2028, 167th day
+        MapRequest(2, 3000, 0x07ED0001, 0x07EA014E, 0); // already closed
+        MapRequest(3, 3001, 0x07ED0001, 0x076C0001, 1); // inactive
+
+        TestWorld.Set64(memory.Map(module + financeRoot, 8), 0, finance);
+        var manager = memory.Map(finance, 0x40);
+        TestWorld.Set64(manager, 0, module + financeVtable);
+        TestWorld.Set64(manager, 0x18, expansions);
+        var expansionQueue = memory.Map(expansions, 24);
+        TestWorld.Set64(manager, 0x20, 0x6209_0000);
+        memory.Map(0x6209_0000, 24);
+        TestWorld.Set64(manager, 0x28, 0x620A_0000);
+        memory.Map(0x620A_0000, 24);
+        MapClock(profile.GameDate!.Primary, 0x6220_0000);
+        if (profile.GameDate.CrossCheck is { } crossCheck) MapClock(crossCheck, 0x6221_0000);
+
+        var reader = new ClubProjects(memory, profile, module);
+        var before = reader.ReadOverview(club);
+        Assert.Empty(before.Scheduled);
+        Assert.Equal(new DateOnly(2027, 7, 15), before.AnnouncedExpansionDate);
+        Assert.Equal(new StadiumPlan(null, new DateOnly(2028, 6, 15)), before.Planning);
+
+        const ulong queuedSlots = 0x6222_0000, queued = 0x6223_0000, stadium = 0x6224_0000;
+        TestWorld.Set64(expansionQueue, 0, queuedSlots);
+        TestWorld.Set64(expansionQueue, 8, queuedSlots + 8);
+        TestWorld.Set64(expansionQueue, 16, queuedSlots + 8);
+        TestWorld.Set64(memory.Map(queuedSlots, 8), 0, queued);
+        var queuedRecord = memory.Map(queued, 0x20);
+        TestWorld.Set64(queuedRecord, 0, clubAddress);
+        TestWorld.Set64(queuedRecord, 8, stadium);
+        TestWorld.Set64(memory.Map(stadium, 8), 0, module + profile.Stadium!.VtableRva);
+        BitConverter.GetBytes(0x07EB00C4u).CopyTo(queuedRecord, 0x18);
+        var after = reader.ReadOverview(club);
+        Assert.Null(after.AnnouncedExpansionDate);
+        Assert.Equal(ClubProjectKind.StadiumExpansion, Assert.Single(after.Scheduled).Kind);
+
+        void MapRequest(int index, ushort kind, uint target, uint completed, byte flags)
+        {
+            ulong address = 0x6210_0000 + (ulong)index * 0x1000;
+            TestWorld.Set64(slots, index * 8, address);
+            var row = memory.Map(address, 0x148);
+            BitConverter.GetBytes(target).CopyTo(row, 0x12C);
+            BitConverter.GetBytes(completed).CopyTo(row, 0x130);
+            BitConverter.GetBytes(kind).CopyTo(row, 0x13C);
+            row[0x140] = flags;
+        }
+
+        void MapClock(DateChain chain, ulong address)
+        {
+            TestWorld.Set64(memory.Map(module + chain.RootRva, 8), 0, address);
+            var date = memory.Map(address, chain.DateOffset + 4);
+            TestWorld.Set64(date, 0, module + chain.ObjectVtableRva!.Value);
+            BitConverter.GetBytes(0x07EA014Eu).CopyTo(date, chain.DateOffset); // 30 November 2026
+        }
+    }
+
+    [Theory]
     [InlineData("27.1.0+2505117-mac.json", 0x5785440u, 0x56C2070u, 0x566A870u)]
     [InlineData("27.1.0+2505719-touch-mac.json", 0x592DF00u, 0x58679F0u, 0x58101E8u)]
     public void Moves_only_the_reviewed_project_to_today_and_refuses_undo_after_the_queue_consumes_it(

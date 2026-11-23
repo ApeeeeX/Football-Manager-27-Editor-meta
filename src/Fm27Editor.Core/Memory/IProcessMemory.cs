@@ -18,6 +18,17 @@ public interface IScatterReadMemory
 
 public readonly record struct MemoryReadRequest(ulong Address, Memory<byte> Destination);
 
+/// <summary>Optional native/in-process heap vtable scanner to avoid copying gigabytes over IPC.</summary>
+public interface IVtableHeapScanner
+{
+    IReadOnlyList<HeapVtableMatch>? TryScanVtables(
+        IReadOnlyList<MemoryRegion> regions,
+        ReadOnlySpan<ulong> vtables,
+        bool tolerateUnreadable,
+        bool unreadablePagesAreNotHeap,
+        CancellationToken ct);
+}
+
 /// <summary>A provider that supports simultaneous read-only calls from independent worker threads.</summary>
 public interface IConcurrentMemoryReads : IProcessMemory { }
 

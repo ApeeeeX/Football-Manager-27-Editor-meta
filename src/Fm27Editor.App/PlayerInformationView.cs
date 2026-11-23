@@ -18,21 +18,28 @@ public sealed partial class MainWindow
     Control InformationSection(PlayerRecord player)
     {
         var personal = InformationPanel(player);
-        personal.Width = 295;
+        personal.Width = 262;
         personal.HorizontalAlignment = HorizontalAlignment.Left;
+        personal.VerticalAlignment = VerticalAlignment.Top;
 
         var host = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,1*,1*,1*"),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 144 },
+                new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 144 },
+                new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 144 },
+            },
             ColumnSpacing = 6,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Margin = new Thickness(0, 0, 0, 10),
+            Margin = new Thickness(0, 0, 0, 12),
         };
 
         var column0 = new StackPanel
         {
             Spacing = 8,
-            Width = 295,
+            Width = 262,
             HorizontalAlignment = HorizontalAlignment.Left,
             Children = { personal },
         };
@@ -55,7 +62,7 @@ public sealed partial class MainWindow
         var groups = new[] { "Technical", "Mental", "Physical" };
         for (int i = 0; i < groups.Length; i++)
         {
-            var column = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var column = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
             if (groups[i] == "Technical")
             {
                 var picker = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
@@ -107,27 +114,31 @@ public sealed partial class MainWindow
         void Refresh() => UpdateScalarDraftState(player);
         void Row(string label, Control value)
         {
+            bool isCheck = value is CheckBox;
+            string localized = Loc.S(label);
             var text = new TextBlock
             {
-                Text = Loc.S(label),
-                MaxWidth = 190,
-                FontSize = 13,
+                Text = localized,
+                MaxWidth = isCheck ? 210 : 114,
+                FontSize = 12,
                 Foreground = UiKit.TextSecondary,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 5, 0),
+                TextWrapping = isCheck ? TextWrapping.Wrap : TextWrapping.NoWrap,
+                TextTrimming = isCheck ? TextTrimming.None : TextTrimming.CharacterEllipsis,
+                Margin = isCheck ? new Thickness(0, 2, 8, 2) : new Thickness(0, 0, 4, 0),
             };
+            if (!isCheck && !string.IsNullOrEmpty(localized)) ToolTip.SetTip(text, localized);
             Control inner;
             if (value is CheckBox or NumericUpDown || label is "Personality" or "Planned Retirement" or "Days in Country")
             {
                 if (value is NumericUpDown || label == "Days in Country")
                 {
-                    value.Width = 96;
+                    value.Width = 102;
                     value.HorizontalAlignment = HorizontalAlignment.Right;
                     value.MinHeight = 24;
                 }
-                var flagRow = new DockPanel { LastChildFill = true, MinHeight = 24 };
+                var flagRow = new DockPanel { LastChildFill = true, MinHeight = 25 };
                 DockPanel.SetDock(value, Dock.Right);
                 flagRow.Children.Add(value);
                 flagRow.Children.Add(text);
@@ -139,7 +150,8 @@ public sealed partial class MainWindow
                 value.MinHeight = 24;
                 var line = new Grid
                 {
-                    MinHeight = 24,
+                    MinHeight = 25,
+                    ColumnSpacing = 5,
                     ColumnDefinitions =
                     {
                         new ColumnDefinition(GridLength.Auto) { SharedSizeGroup = "InfoLbl" },
@@ -155,7 +167,7 @@ public sealed partial class MainWindow
             rowsStack.Children.Add(new Border
             {
                 Background = rowIdx++ % 2 == 1 ? UiKit.SurfaceZebra : Brushes.Transparent,
-                Padding = new Thickness(5, 2, 5, 2),
+                Padding = new Thickness(6, 2, 6, 2),
                 Child = inner,
             });
         }
@@ -166,7 +178,7 @@ public sealed partial class MainWindow
             if (!values.TryGetValue(field, out long raw)) return () => null;
             int current = (int)raw;
             var items = list.Any(x => x.Code == current) ? list : [.. list, (current, Loc.F("Code {0}", current))];
-            var box = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = items.Select(x => x.Name).ToArray(), SelectedIndex = items.ToList().FindIndex(x => x.Code == current) };
+            var box = new ComboBox { FontSize = 12, Padding = new Thickness(5, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = items.Select(x => x.Name).ToArray(), SelectedIndex = items.ToList().FindIndex(x => x.Code == current) };
             box.SelectionChanged += (_, _) => Refresh();
             Row(label, box);
             int? Code() => box.SelectedIndex >= 0 ? items[box.SelectedIndex].Code : null;

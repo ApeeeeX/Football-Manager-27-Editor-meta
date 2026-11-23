@@ -841,7 +841,7 @@ public sealed partial class MainWindow
         var header = new ContentControl { Margin = new Thickness(10, 8, 10, 7) };
         DockPanel.SetDock(header, Dock.Top);
         var rail = new ContentControl { Margin = new Thickness(10, 0, 0, 8), VerticalAlignment = VerticalAlignment.Top };
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*") };
+        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("168,*") };
         body.Children.Add(rail);
         Grid.SetColumn(scroll, 1); body.Children.Add(scroll);
         var root = new DockPanel { Background = UiKit.WindowBg, Children = { header, sticky, body } };

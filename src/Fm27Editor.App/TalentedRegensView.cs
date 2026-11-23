@@ -79,20 +79,21 @@ public sealed class TalentedRegensTab
         toolbar.Children.Add(new Border { Margin = new Thickness(0, 0, 12, 4), Child = refreshBtn });
         toolbar.Children.Add(new Border { Margin = new Thickness(0, 0, 0, 4), VerticalAlignment = VerticalAlignment.Center, Child = summaryText });
 
-        grid.Columns.Add(ToolGrid.Text<RegenRow>("Name", r => r.Name, 190, "Player name (double-click to open)", "#E2E8F0", bold: true));
-        grid.Columns.Add(ToolGrid.Number<RegenRow>("Age", r => r.Age?.ToString(Inv) ?? "", 52, "Current age"));
-        grid.Columns.Add(ToolGrid.Number<RegenRow>("CA", r => r.CA.ToString(Inv), 54, "Current Ability"));
-        grid.Columns.Add(ToolGrid.Number<RegenRow>("PA", r => r.PA.ToString(Inv), 54, "Potential Ability"));
+        grid.Columns.Add(ToolGrid.StarText<RegenRow>("Name", r => r.Name, 1.4, 130, "Player name (double-click to open)", "#E2E8F0", bold: true));
+        grid.Columns.Add(ToolGrid.Number<RegenRow>("Age", r => r.Age?.ToString(Inv) ?? "", 44, "Current age"));
+        grid.Columns.Add(ToolGrid.Number<RegenRow>("CA", r => r.CA.ToString(Inv), 44, "Current Ability"));
+        grid.Columns.Add(ToolGrid.Number<RegenRow>("PA", r => r.PA.ToString(Inv), 44, "Potential Ability"));
         if (LegacyScoutingAvailability.Enabled)
         {
-        grid.Columns.Add(ToolGrid.Number<RegenRow>("RCA", r => r.RCA.ToString(Inv), 54, "Recommended Current Ability"));
-        grid.Columns.Add(ToolGrid.Text<RegenRow>("Role", r => r.BestRoleCode, 76, "Best fit tactical role", "#C084FC", bold: true));
-        grid.Columns.Add(ToolGrid.Number<RegenRow>("Role %", r => r.BestRoleScore.ToString("0.0", Inv) + "%", 68, "Best role score"));
+        grid.Columns.Add(ToolGrid.Number<RegenRow>("RCA", r => r.RCA.ToString(Inv), 46, "Recommended Current Ability"));
+        grid.Columns.Add(ToolGrid.Text<RegenRow>("Role", r => r.BestRoleCode, 66, "Best fit tactical role", "#C084FC", bold: true));
+        grid.Columns.Add(ToolGrid.Number<RegenRow>("Role %", r => r.BestRoleScore.ToString("0.0", Inv) + "%", 62, "Best role score"));
         }
         grid.Columns.Add(new DataGridTemplateColumn
         {
             Header = ToolGrid.Header("Personality", "Classified personality (red = negative)", HorizontalAlignment.Left),
-            Width = new DataGridLength(145),
+            Width = new DataGridLength(0.95, DataGridLengthUnitType.Star),
+            MinWidth = 92,
             CellTemplate = new FuncDataTemplate<RegenRow>((r, _) => new TextBlock
             {
                 Text = r?.Personality ?? "",
@@ -103,9 +104,9 @@ public sealed class TalentedRegensTab
                 TextTrimming = TextTrimming.CharacterEllipsis,
             }),
         });
-        grid.Columns.Add(ToolGrid.Text<RegenRow>("Pos", r => r.Positions, 105, "Natural / accomplished positions"));
-        grid.Columns.Add(ToolGrid.Text<RegenRow>("Club", r => r.Club, 160, "Current club (blank = free agent)"));
-        grid.Columns.Add(ToolGrid.Text<RegenRow>("Nat", r => r.Nationality, 115, "Nationality"));
+        grid.Columns.Add(ToolGrid.StarText<RegenRow>("Pos", r => r.Positions, 0.85, 85, "Natural / accomplished positions"));
+        grid.Columns.Add(ToolGrid.StarText<RegenRow>("Club", r => r.Club, 1.1, 110, "Current club (blank = free agent)"));
+        grid.Columns.Add(ToolGrid.StarText<RegenRow>("Nat", r => r.Nationality, 0.9, 85, "Nationality"));
 
         ToolGrid.EnableSort<RegenRow>(grid, new Dictionary<string, Func<RegenRow, IComparable?>>
         {

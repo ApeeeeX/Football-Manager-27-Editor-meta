@@ -112,6 +112,32 @@ public class StaffTests
         Assert.Throws<StaleObjectException>(() => BackroomTeam.Apply(ability, repo, writer));
     }
 
+    [Fact]
+    public void Backroom_builds_one_team_skips_the_first_team_head_coach_and_raises_ca_and_pa()
+    {
+        const ulong First = 0x9100, U21 = 0x9200;
+        var repo = Repo();
+        var person = Assert.Single(repo.LoadAll());
+        var writer = new StaffWriter(_w.Memory, _w.Profile, TestWorld.ModuleBase);
+        var club = new ClubInfo(0x9000, "Man Utd", "Man Utd");
+        // One fixture person in three jobs: the planner checks each record against memory, so the ID stays the real one.
+        var head = person with { Club = club, JobCode = 16, TeamAddress = First };
+        var reserve = person with { Club = club, JobCode = 16, TeamAddress = U21 };
+        var scout = person with { Club = club, JobCode = 14, TeamAddress = First };
+
+        Assert.False(BackroomTeam.IsEligible(head, First));
+        Assert.True(BackroomTeam.IsEligible(reserve, First));
+        Assert.False(BackroomTeam.IsEligible(reserve, 0)); // first team unknown: treated as the head coach
+        Assert.Empty(BackroomTeam.Plan([head], club.Address, null, writer, First, First).Abilities);
+
+        Assert.Empty(BackroomTeam.Plan([scout], club.Address, null, writer, U21, First).Abilities); // another team
+        Assert.Empty(BackroomTeam.Plan([reserve], club.Address, null, writer, First, First).Abilities);
+
+        var plan = BackroomTeam.Plan([reserve], club.Address, null, writer, U21, First);
+        Assert.Empty(plan.Skipped);
+        Assert.Equal([(false, 188, 200), (true, 195, 200)], plan.Abilities.Select(change => (change.Potential, change.Before, change.After)));
+    }
+
     /// <summary>
     /// Human manager: 0x580-byte object, staff part (vtable 0x4CC086C) 0x440 below the person part (vtable 0x4CC08D8).
     /// Bytes are Duong Vu's as dumped; expected values are FMRTE 27's page for him (ID 2002081897, born 20/8/2004,

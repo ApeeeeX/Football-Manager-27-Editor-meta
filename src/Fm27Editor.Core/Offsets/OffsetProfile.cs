@@ -324,7 +324,10 @@ public sealed class OffsetProfile
                 Projects = k.TryGetProperty("projects", out var projects) ? new Clubs.ClubProjectOffsets(
                     (uint)Hex(projects, "managerRoot"), (uint)Hex(projects, "managerVtable"),
                     ReadClubProjectQueue(projects.GetProperty("expansions")), ReadClubProjectQueue(projects.GetProperty("upgrades")),
-                    OptHex(projects, "stadiumPlans"), OptHex(projects, "stadiumPlanExpiry"))
+                    OptHex(projects, "stadiumPlans"), OptHex(projects, "stadiumPlanExpiry"),
+                    projects.TryGetProperty("boardRequests", out var requests) ? new(
+                        Hex(requests, "holderType"), Hex(requests, "requests"), Hex(requests, "vector"),
+                        Hex(requests, "type"), Hex(requests, "flags"), Hex(requests, "targetDate"), Hex(requests, "completedDate")) : null)
                 {
                     StadiumChanges = projects.TryGetProperty("stadiumChanges", out var sc) ? new Clubs.StadiumChangeOffsets(
                         (uint)Hex(sc, "tableRoot"), (uint)Hex(sc, "tableVtable"), Hex(sc, "vector"), (uint)Hex(sc, "vtable"),
@@ -724,6 +727,14 @@ public sealed class OffsetProfile
                     H("managerRoot", projects.ManagerRoot); H("managerVtable", projects.ManagerVtable);
                     if (projects.StadiumPlans is { } plans) H("stadiumPlans", plans);
                     if (projects.StadiumPlanExpiry is { } expiry) H("stadiumPlanExpiry", expiry);
+                    if (projects.BoardRequests is { } requests)
+                    {
+                        w.WriteStartObject("boardRequests");
+                        H("holderType", requests.HolderType); H("requests", requests.Requests); H("vector", requests.Vector);
+                        H("type", requests.RequestType); H("flags", requests.Flags);
+                        H("targetDate", requests.TargetDate); H("completedDate", requests.CompletedDate);
+                        w.WriteEndObject();
+                    }
                     WriteQueue("expansions", projects.Expansions);
                     WriteQueue("upgrades", projects.Upgrades);
                     if (projects.StadiumChanges is { } sc)

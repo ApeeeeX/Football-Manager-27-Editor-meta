@@ -39,6 +39,7 @@
     "projects": {
       "stadiumPlans": "0x28",
       "stadiumPlanExpiry": "0x38",
+      "boardRequests": { "holderType": "0x74", "requests": "0x78", "vector": "0x18", "type": "0x13C", "flags": "0x140", "targetDate": "0x12C", "completedDate": "0x130" },
       "managerRoot": "0x592DF00",
       "managerVtable": "0x58679F0",
       "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8" },

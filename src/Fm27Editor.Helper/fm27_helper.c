@@ -33,6 +33,12 @@
  *     A raw Mach thread runs a small stub that starts a pthread (pthread_create_from_mach_thread); the pthread
  *     calls calloc and stores the result. calloc and pthread_create_from_mach_thread are resolved here and used at
  *     the same address in the target (one dyld shared cache per boot); their first bytes are compared first.
+ *
+ * Built with -DFM27_PLUGIN the same file is the in-game plugin, libfm27editor_plugin.dylib. The game loads it through
+ * DYLD_INSERT_LIBRARIES (its entitlements allow DYLD environment variables and unsigned libraries), so it reaches the
+ * game's memory from inside and needs neither root nor task_for_pid on another process, which System Integrity
+ * Protection refuses for the game's Hardened Runtime. It serves the same protocol on $TMPDIR/fm27editor-<pid>.sock
+ * (owner-only), opens only its own process, calls calloc directly and never suspends its own thread.
  */
 
 #include <dlfcn.h>
@@ -40,7 +46,9 @@
 #include <launch.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#include <mach/vm_statistics.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -87,7 +95,8 @@ enum
     OP_RESUME = 12,
     OP_READ_MANY = 13,
     OP_REMOTE_CALLOC = 14,
-    OP_HEAP_CHECK = 15
+    OP_HEAP_CHECK = 15,
+    OP_SCAN_VTABLES = 16
 };
 
 typedef struct
@@ -666,6 +675,13 @@ static void op_open(int fd, int client_id, reader *r)
         return;
     }
     (void)writable;
+#ifdef FM27_PLUGIN
+    if (pid != getpid())
+    {
+        send_error(fd, 2, "the plugin serves only the game process it is loaded in");
+        return;
+    }
+#endif
 
     mach_port_t task = MACH_PORT_NULL;
     kern_return_t kr = task_for_pid(mach_task_self(), pid, &task);
@@ -723,46 +739,611 @@ static void op_read(int fd, reader *r)
         return;
     }
 
-    buffer out = {0};
     if (length == 0)
     {
-        buf_u32(&out, 0);
-        send_frame(fd, out.data, (uint32_t)out.len);
-        free(out.data);
+        uint32_t status = 0;
+        send_frame(fd, &status, 4);
         return;
     }
-    if (length > MAX_MESSAGE)
+    if (length > MAX_MESSAGE - 4)
     {
         send_error(fd, 6, "read is too large");
         return;
     }
 
-    uint8_t *data = malloc(length);
-    if (data == NULL)
+    uint8_t small[4 + 4096];
+    uint8_t *buf = length <= 4096 ? small : malloc((size_t)length + 4);
+    if (buf == NULL)
     {
         send_error(fd, 4, "out of memory");
         return;
     }
+    memset(buf, 0, 4);
     mach_vm_size_t got = 0;
     kern_return_t kr = mach_vm_read_overwrite(slot->task, (mach_vm_address_t)address,
-                                              (mach_vm_size_t)length, (mach_vm_address_t)data, &got);
+                                              (mach_vm_size_t)length, (mach_vm_address_t)(buf + 4), &got);
     if (kr != KERN_SUCCESS || got != (mach_vm_size_t)length)
     {
-        free(data);
+        if (buf != small)
+            free(buf);
         send_errorf(fd, 7, "mach_vm_read_overwrite(0x%llx, %u) failed with kern_return_t %d",
                     (unsigned long long)address, (unsigned)length, (int)kr);
         return;
     }
-    if (buf_u32(&out, 0) != 0 || buf_bytes(&out, data, length) != 0)
+    send_frame(fd, buf, length + 4);
+    if (buf != small)
+        free(buf);
+}
+
+#define MAX_SCAN_VTABLES 32u
+#define MAX_SCAN_REGIONS 262144u
+#define SCAN_CHUNK_BYTES (4u * 1024u * 1024u)
+#define SCAN_WORK_BYTES (8u * 1024u * 1024u)
+#define SCAN_MAX_THREADS 8u
+
+typedef struct
+{
+    uint64_t addr;
+    uint64_t vt;
+} scan_match;
+
+typedef struct
+{
+    scan_match *items;
+    size_t count;
+    size_t cap;
+} match_list;
+
+typedef struct
+{
+    uint64_t start;
+    uint64_t end;
+    uint32_t user_tag;
+    uint8_t has_data;
+} vm_scan_meta;
+
+typedef struct
+{
+    uint32_t region_idx;
+    uint64_t base;
+    uint64_t length;
+    int is_region_start;
+} scan_work_item;
+
+typedef struct
+{
+    task_t task;
+    const uint64_t *vtables;
+    uint32_t vtable_count;
+    uint64_t min_vt;
+    uint64_t vt_span;
+    int tolerate;
+    int skip_unreadable;
+    size_t page_sz;
+    const scan_work_item *items;
+    size_t item_count;
+    match_list *results;
+    uint8_t *region_skip;
+    size_t next_item;
+    int failed;
+    pthread_mutex_t err_lock;
+    int err_code;
+    char err_msg[256];
+} scan_ctx;
+
+static int match_push(match_list *list, uint64_t addr, uint64_t vt)
+{
+    if (list->count == list->cap)
     {
-        free(data);
-        free(out.data);
+        size_t new_cap = list->cap ? list->cap * 2 : 64;
+        if (new_cap > (size_t)MAX_MESSAGE / sizeof(scan_match))
+            return -1;
+        scan_match *grown = realloc(list->items, new_cap * sizeof(scan_match));
+        if (grown == NULL)
+            return -1;
+        list->items = grown;
+        list->cap = new_cap;
+    }
+    list->items[list->count++] = (scan_match){addr, vt};
+    return 0;
+}
+
+static int scan_words(match_list *list, uint64_t base_addr,
+                      const uint8_t *bytes, size_t len,
+                      const uint64_t *vtables, uint32_t vtable_count,
+                      uint64_t min_vt, uint64_t vt_span)
+{
+    size_t word_count = len / 8;
+    const uint64_t *words = (const uint64_t *)(const void *)bytes;
+    if (vtable_count == 1)
+    {
+        uint64_t v0 = vtables[0];
+        for (size_t w = 0; w < word_count; w++)
+        {
+            if (words[w] == v0)
+            {
+                if (match_push(list, base_addr + (uint64_t)w * 8, v0) != 0)
+                    return -1;
+            }
+        }
+        return 0;
+    }
+    for (size_t w = 0; w < word_count; w++)
+    {
+        uint64_t val = words[w];
+        if (__builtin_expect((val - min_vt) <= vt_span, 0))
+        {
+            for (uint32_t k = 0; k < vtable_count; k++)
+            {
+                if (val == vtables[k])
+                {
+                    if (match_push(list, base_addr + (uint64_t)w * 8, val) != 0)
+                        return -1;
+                    break;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+static int is_non_heap_tag(uint32_t tag)
+{
+    switch (tag)
+    {
+    case VM_MEMORY_IOKIT:
+    case VM_MEMORY_LAYERKIT:
+    case VM_MEMORY_CGIMAGE:
+    case VM_MEMORY_COREUI:
+    case VM_MEMORY_COREUIFILE:
+    case VM_MEMORY_IOSURFACE:
+    case VM_MEMORY_IOACCELERATOR:
+    case VM_MEMORY_COREUI_CACHED_IMAGE_DATA:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int collect_vm_scan_meta(task_t task, uint64_t min_addr, uint64_t max_addr,
+                                vm_scan_meta **out_items, size_t *out_count)
+{
+    size_t cap = 256, count = 0;
+    vm_scan_meta *items = malloc(cap * sizeof(vm_scan_meta));
+    if (items == NULL)
+        return -1;
+
+    mach_vm_address_t addr = (mach_vm_address_t)min_addr;
+    natural_t depth = 1;
+    while ((uint64_t)addr < max_addr)
+    {
+        mach_vm_size_t size = 0;
+        vm_region_submap_info_data_64_t info;
+        mach_msg_type_number_t info_count = VM_REGION_SUBMAP_INFO_COUNT_64;
+        memset(&info, 0, sizeof(info));
+        kern_return_t kr = mach_vm_region_recurse(task, &addr, &size, &depth,
+                                                  (vm_region_recurse_info_t)&info, &info_count);
+        if (kr != KERN_SUCCESS || size == 0)
+            break;
+        if (info.is_submap)
+        {
+            if (depth >= SUBMAP_MAX_DEPTH)
+                break;
+            depth++;
+            continue;
+        }
+        uint64_t start = (uint64_t)addr;
+        uint64_t end = start + (uint64_t)size;
+        if (start >= max_addr || end <= start)
+            break;
+        if (count == cap)
+        {
+            size_t new_cap = cap * 2;
+            vm_scan_meta *grown = realloc(items, new_cap * sizeof(vm_scan_meta));
+            if (grown == NULL)
+            {
+                free(items);
+                return -1;
+            }
+            items = grown;
+            cap = new_cap;
+        }
+        uint8_t has_data = (info.pages_resident != 0 || info.pages_swapped_out != 0 ||
+                            info.pages_shared_now_private != 0 || info.pages_dirtied != 0)
+                               ? 1
+                               : 0;
+        items[count++] = (vm_scan_meta){start, end, info.user_tag, has_data};
+        addr = (mach_vm_address_t)end;
+        depth = 1;
+    }
+    *out_items = items;
+    *out_count = count;
+    return 0;
+}
+
+static void record_scan_error(scan_ctx *ctx, int code, const char *fmt, uint64_t addr, size_t size)
+{
+    pthread_mutex_lock(&ctx->err_lock);
+    if (!__atomic_load_n(&ctx->failed, __ATOMIC_RELAXED))
+    {
+        ctx->err_code = code;
+        if (fmt != NULL)
+            snprintf(ctx->err_msg, sizeof ctx->err_msg, fmt, (unsigned long long)addr, size);
+        else
+            snprintf(ctx->err_msg, sizeof ctx->err_msg, "out of memory");
+        __atomic_store_n(&ctx->failed, 1, __ATOMIC_RELEASE);
+    }
+    pthread_mutex_unlock(&ctx->err_lock);
+}
+
+static void *scan_worker(void *arg)
+{
+    scan_ctx *ctx = (scan_ctx *)arg;
+    uint8_t *scratch = malloc(SCAN_CHUNK_BYTES);
+    if (scratch == NULL)
+    {
+        record_scan_error(ctx, 4, NULL, 0, 0);
+        return NULL;
+    }
+
+    for (;;)
+    {
+        if (__atomic_load_n(&ctx->failed, __ATOMIC_RELAXED))
+            break;
+        size_t idx = __atomic_fetch_add(&ctx->next_item, 1, __ATOMIC_RELAXED);
+        if (idx >= ctx->item_count)
+            break;
+
+        scan_work_item item = ctx->items[idx];
+        if (ctx->skip_unreadable && __atomic_load_n(&ctx->region_skip[item.region_idx], __ATOMIC_RELAXED))
+            continue;
+
+        match_list *list = &ctx->results[idx];
+        int skip_region = 0;
+        for (uint64_t offset = 0; offset + 8 <= item.length && !skip_region; offset += SCAN_CHUNK_BYTES)
+        {
+            if (__atomic_load_n(&ctx->failed, __ATOMIC_RELAXED))
+                break;
+            if (ctx->skip_unreadable && __atomic_load_n(&ctx->region_skip[item.region_idx], __ATOMIC_RELAXED))
+                break;
+
+            uint64_t rem = item.length - offset;
+            size_t length = rem < SCAN_CHUNK_BYTES ? (size_t)rem : SCAN_CHUNK_BYTES;
+            mach_vm_size_t got = 0;
+            kern_return_t kr = mach_vm_read_overwrite(ctx->task, (mach_vm_address_t)(item.base + offset),
+                                                      (mach_vm_size_t)length, (mach_vm_address_t)scratch, &got);
+            if (kr == KERN_SUCCESS && got == (mach_vm_size_t)length)
+            {
+                if (scan_words(list, item.base + offset, scratch, length,
+                               ctx->vtables, ctx->vtable_count, ctx->min_vt, ctx->vt_span) != 0)
+                {
+                    record_scan_error(ctx, 4, NULL, 0, 0);
+                    skip_region = 1;
+                    break;
+                }
+                continue;
+            }
+            for (size_t page = 0; page < length; page += ctx->page_sz)
+            {
+                size_t size = length - page < ctx->page_sz ? length - page : ctx->page_sz;
+                if (size < 8)
+                    continue;
+                mach_vm_size_t page_got = 0;
+                kern_return_t page_kr = mach_vm_read_overwrite(ctx->task,
+                                                               (mach_vm_address_t)(item.base + offset + page),
+                                                               (mach_vm_size_t)size,
+                                                               (mach_vm_address_t)(scratch + page), &page_got);
+                if (page_kr != KERN_SUCCESS || page_got != (mach_vm_size_t)size)
+                {
+                    if (ctx->tolerate)
+                        continue;
+                    if (ctx->skip_unreadable)
+                    {
+                        if (item.is_region_start && offset == 0 && page == 0)
+                        {
+                            __atomic_store_n(&ctx->region_skip[item.region_idx], 1, __ATOMIC_RELAXED);
+                            skip_region = 1;
+                            break;
+                        }
+                        continue;
+                    }
+                    record_scan_error(ctx, 7,
+                                      "Heap index is incomplete: writable range 0x%llx (%zu bytes) could not be read",
+                                      item.base + offset + page, size);
+                    skip_region = 1;
+                    break;
+                }
+                if (scan_words(list, item.base + offset + page, scratch + page, size,
+                               ctx->vtables, ctx->vtable_count, ctx->min_vt, ctx->vt_span) != 0)
+                {
+                    record_scan_error(ctx, 4, NULL, 0, 0);
+                    skip_region = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    free(scratch);
+    return NULL;
+}
+
+static void op_scan_vtables(int fd, reader *r)
+{
+    int32_t handle;
+    uint8_t flags;
+    uint32_t vtable_count;
+    uint64_t vtables[MAX_SCAN_VTABLES];
+    if (!rd_i32(r, &handle) || !rd_u8(r, &flags) || !rd_u32(r, &vtable_count) ||
+        vtable_count == 0 || vtable_count > MAX_SCAN_VTABLES)
+    {
+        send_error(fd, 1, "malformed ScanVtables request");
+        return;
+    }
+    task_slot *slot = slot_for(handle);
+    if (slot == NULL)
+    {
+        send_error(fd, 5, "invalid task handle");
+        return;
+    }
+    uint64_t min_vt = UINT64_MAX, max_vt = 0;
+    for (uint32_t i = 0; i < vtable_count; i++)
+    {
+        if (!rd_u64(r, &vtables[i]))
+        {
+            send_error(fd, 1, "malformed ScanVtables vtable list");
+            return;
+        }
+        if (vtables[i] < min_vt)
+            min_vt = vtables[i];
+        if (vtables[i] > max_vt)
+            max_vt = vtables[i];
+    }
+    uint32_t region_count;
+    if (!rd_u32(r, &region_count) || region_count > MAX_SCAN_REGIONS ||
+        (size_t)(r->end - r->p) != (size_t)region_count * 16)
+    {
+        send_error(fd, 1, "malformed ScanVtables region list");
+        return;
+    }
+
+    if (region_count == 0)
+    {
+        uint32_t empty[2] = {0, 0};
+        send_frame(fd, empty, sizeof(empty));
+        return;
+    }
+
+    uint64_t *reg_starts = malloc((size_t)region_count * sizeof(uint64_t));
+    uint64_t *reg_sizes = malloc((size_t)region_count * sizeof(uint64_t));
+    if (reg_starts == NULL || reg_sizes == NULL)
+    {
+        free(reg_starts);
+        free(reg_sizes);
         send_error(fd, 4, "out of memory");
         return;
     }
-    free(data);
-    send_frame(fd, out.data, (uint32_t)out.len);
-    free(out.data);
+
+    uint64_t min_addr = UINT64_MAX, max_addr = 0;
+    for (uint32_t ri = 0; ri < region_count; ri++)
+    {
+        rd_u64(r, &reg_starts[ri]);
+        rd_u64(r, &reg_sizes[ri]);
+        if (reg_sizes[ri] >= 8)
+        {
+            if (reg_starts[ri] < min_addr)
+                min_addr = reg_starts[ri];
+            uint64_t reg_end = reg_starts[ri] + reg_sizes[ri];
+            if (reg_end > max_addr)
+                max_addr = reg_end;
+        }
+    }
+
+    int tolerate = (flags & 1) != 0;
+    int skip_unreadable = (flags & 2) != 0;
+
+    vm_scan_meta *meta = NULL;
+    size_t meta_count = 0;
+    if (skip_unreadable && min_addr < max_addr)
+    {
+        if (collect_vm_scan_meta(slot->task, min_addr, max_addr, &meta, &meta_count) != 0)
+        {
+            meta = NULL;
+            meta_count = 0;
+        }
+    }
+
+    size_t work_cap = (size_t)region_count + 64;
+    size_t work_count = 0;
+    scan_work_item *items = malloc(work_cap * sizeof(scan_work_item));
+    uint8_t *region_skip = calloc(region_count, 1);
+    if (items == NULL || region_skip == NULL)
+    {
+        free(meta);
+        free(reg_starts);
+        free(reg_sizes);
+        free(items);
+        free(region_skip);
+        send_error(fd, 4, "out of memory");
+        return;
+    }
+
+    size_t mi = 0;
+    uint64_t prev_start = 0;
+    for (uint32_t ri = 0; ri < region_count; ri++)
+    {
+        uint64_t rs = reg_starts[ri];
+        uint64_t rsz = reg_sizes[ri];
+        if (rsz < 8)
+            continue;
+        if (meta_count > 0)
+        {
+            if (ri > 0 && rs < prev_start)
+                mi = 0;
+            prev_start = rs;
+            while (mi < meta_count && meta[mi].end <= rs)
+                mi++;
+            uint64_t re = rs + rsz;
+            if (mi < meta_count && meta[mi].start <= rs && meta[mi].end >= re &&
+                (!meta[mi].has_data || is_non_heap_tag(meta[mi].user_tag)))
+                continue;
+        }
+        for (uint64_t off = 0; off + 8 <= rsz; off += SCAN_WORK_BYTES)
+        {
+            uint64_t rem = rsz - off;
+            uint64_t len = rem < SCAN_WORK_BYTES ? rem : SCAN_WORK_BYTES;
+            if (work_count == work_cap)
+            {
+                size_t new_cap = work_cap * 2;
+                scan_work_item *grown = realloc(items, new_cap * sizeof(scan_work_item));
+                if (grown == NULL)
+                {
+                    free(meta);
+                    free(reg_starts);
+                    free(reg_sizes);
+                    free(items);
+                    free(region_skip);
+                    send_error(fd, 4, "out of memory");
+                    return;
+                }
+                items = grown;
+                work_cap = new_cap;
+            }
+            items[work_count++] = (scan_work_item){ri, rs + off, len, off == 0 ? 1 : 0};
+        }
+    }
+
+    free(meta);
+    free(reg_starts);
+    free(reg_sizes);
+
+    if (work_count == 0)
+    {
+        free(items);
+        free(region_skip);
+        uint32_t empty[2] = {0, 0};
+        send_frame(fd, empty, sizeof(empty));
+        return;
+    }
+
+    match_list *results = calloc(work_count, sizeof(match_list));
+    if (results == NULL)
+    {
+        free(items);
+        free(region_skip);
+        send_error(fd, 4, "out of memory");
+        return;
+    }
+
+    size_t page_sz = (size_t)vm_page_size;
+    if (page_sz < 4096)
+        page_sz = 4096;
+
+    scan_ctx ctx = {
+        .task = slot->task,
+        .vtables = vtables,
+        .vtable_count = vtable_count,
+        .min_vt = min_vt,
+        .vt_span = max_vt - min_vt,
+        .tolerate = tolerate,
+        .skip_unreadable = skip_unreadable,
+        .page_sz = page_sz,
+        .items = items,
+        .item_count = work_count,
+        .results = results,
+        .region_skip = region_skip,
+        .next_item = 0,
+        .failed = 0,
+        .err_code = 4,
+    };
+    pthread_mutex_init(&ctx.err_lock, NULL);
+
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    size_t nthreads = ncpu > 1 ? (size_t)ncpu : 1;
+    if (nthreads > SCAN_MAX_THREADS)
+        nthreads = SCAN_MAX_THREADS;
+    if (nthreads > work_count)
+        nthreads = work_count;
+
+    pthread_t threads[SCAN_MAX_THREADS];
+    size_t spawned = 0;
+    for (size_t t = 1; t < nthreads; t++)
+    {
+        if (pthread_create(&threads[spawned], NULL, scan_worker, &ctx) == 0)
+            spawned++;
+    }
+    scan_worker(&ctx);
+    for (size_t t = 0; t < spawned; t++)
+        pthread_join(threads[t], NULL);
+
+    pthread_mutex_destroy(&ctx.err_lock);
+
+    if (ctx.failed)
+    {
+        int code = ctx.err_code;
+        char msg[256];
+        memcpy(msg, ctx.err_msg, sizeof(msg));
+        for (size_t wi = 0; wi < work_count; wi++)
+            free(results[wi].items);
+        free(results);
+        free(items);
+        free(region_skip);
+        send_error(fd, code, msg);
+        return;
+    }
+
+    size_t total_matches = 0;
+    for (size_t wi = 0; wi < work_count; wi++)
+        total_matches += results[wi].count;
+
+    if (total_matches > (size_t)(MAX_MESSAGE - 8u) / 16u)
+    {
+        for (size_t wi = 0; wi < work_count; wi++)
+            free(results[wi].items);
+        free(results);
+        free(items);
+        free(region_skip);
+        send_error(fd, 4, "out of memory");
+        return;
+    }
+
+    size_t frame_bytes = 8u + total_matches * 16u;
+    uint8_t *frame_out = malloc(frame_bytes);
+    if (frame_out == NULL)
+    {
+        for (size_t wi = 0; wi < work_count; wi++)
+            free(results[wi].items);
+        free(results);
+        free(items);
+        free(region_skip);
+        send_error(fd, 4, "out of memory");
+        return;
+    }
+
+    uint32_t ok_status = 0;
+    uint32_t match_u32 = (uint32_t)total_matches;
+    memcpy(frame_out, &ok_status, 4);
+    memcpy(frame_out + 4, &match_u32, 4);
+    uint8_t *dst = frame_out + 8;
+    for (size_t wi = 0; wi < work_count; wi++)
+    {
+        if (results[wi].count > 0)
+        {
+            for (size_t k = 0; k < results[wi].count; k++)
+            {
+                memcpy(dst, &results[wi].items[k].addr, 8);
+                memcpy(dst + 8, &results[wi].items[k].vt, 8);
+                dst += 16;
+            }
+            free(results[wi].items);
+        }
+    }
+
+    free(results);
+    free(items);
+    free(region_skip);
+    send_frame(fd, frame_out, (uint32_t)frame_bytes);
+    free(frame_out);
 }
 
 /* Read-only batching of small fields; the complete request is checked before the first Mach read. */
@@ -1027,6 +1608,7 @@ static int remote_call2(task_slot *s, void *fn, const char *fn_name, uint64_t ar
     return 1;
 }
 
+__attribute__((unused)) /* the plugin calls calloc directly */
 static int remote_calloc(task_slot *s, uint32_t bytes, uint64_t *result, char *error, size_t error_len)
 {
     void *calloc_fn = dlsym(RTLD_DEFAULT, "calloc");
@@ -1099,13 +1681,24 @@ static void op_remote_calloc(int fd, reader *r)
         send_error(fd, 5, "invalid task handle");
         return;
     }
-    char error[256];
     uint64_t address = 0;
+#ifdef FM27_PLUGIN
+    /* Inside the game: the game's own calloc, so the game can free() the block later. */
+    void *block = calloc(1, bytes);
+    if (block == NULL)
+    {
+        send_error(fd, 7, "calloc returned NULL");
+        return;
+    }
+    address = (uint64_t)(uintptr_t)block;
+#else
+    char error[256];
     if (!remote_calloc(slot, bytes, &address, error, sizeof error))
     {
         send_error(fd, 7, error);
         return;
     }
+#endif
     buffer out = {0};
     buf_u32(&out, 0);
     buf_u64(&out, address);
@@ -1333,6 +1926,19 @@ static void op_pause(int fd, reader *r)
         send_errorf(fd, 13, "task_threads failed with kern_return_t %d", (int)kr);
         return;
     }
+#ifdef FM27_PLUGIN
+    /* The serving thread must keep running to answer Resume. */
+    thread_act_t self = mach_thread_self();
+    for (mach_msg_type_number_t i = 0; i < count; i++)
+        if (threads[i] == self)
+        {
+            mach_port_deallocate(mach_task_self(), threads[i]);
+            threads[i] = threads[count - 1];
+            count--;
+            break;
+        }
+    mach_port_deallocate(mach_task_self(), self);
+#endif
 
     mach_msg_type_number_t suspended = 0;
     for (; suspended < count; suspended++)
@@ -1408,6 +2014,9 @@ static void handle_request(int fd, int client_id, const uint8_t *request, uint32
     case OP_HEAP_CHECK:
         op_heap_check(fd, &r);
         break;
+    case OP_SCAN_VTABLES:
+        op_scan_vtables(fd, &r);
+        break;
     case OP_WRITE:
         op_write(fd, &r);
         break;
@@ -1468,6 +2077,88 @@ static void serve_client(int fd, int client_id)
 }
 
 /* --------------------------------------------------------------- main loop */
+
+#ifdef FM27_PLUGIN
+#include <libgen.h>
+#include <limits.h>
+#include <mach-o/dyld.h>
+
+static int g_plugin_listener = -1;
+
+/* Steam passes the launch options to helpers it starts with the game: serve only in the game itself. */
+static int plugin_in_game(void)
+{
+    char path[PATH_MAX];
+    uint32_t size = sizeof path;
+    if (_NSGetExecutablePath(path, &size) != 0)
+        return 0;
+    /* Any Football Manager release, so one setup keeps working when the next game comes out. */
+    const char *name = basename(path);
+    return strncmp(name, "Football Manager", 16) == 0 || strcmp(name, "fm") == 0;
+}
+
+static void *plugin_serve(void *unused)
+{
+    (void)unused;
+    int next_client_id = 1;
+    for (;;)
+    {
+        int client = accept(g_plugin_listener, NULL, NULL);
+        if (client < 0)
+        {
+            if (errno == EINTR || errno == ECONNABORTED)
+                continue;
+            return NULL;
+        }
+        /* One client at a time, as in the helper; the editor serialises its own requests. */
+        int client_id = next_client_id++;
+        serve_client(client, client_id);
+        close(client);
+    }
+}
+
+__attribute__((constructor)) static void plugin_start(void)
+{
+    /* Processes the game starts must not inherit the plugin: dyld aborts platform binaries such as /usr/bin/open
+       when an unsigned library is inserted (measured: SIGABRT in dyld4::prepare). */
+    unsetenv("DYLD_INSERT_LIBRARIES");
+    if (!plugin_in_game())
+        return;
+    char directory[PATH_MAX];
+    if (confstr(_CS_DARWIN_USER_TEMP_DIR, directory, sizeof directory) == 0)
+        return;
+    struct sockaddr_un address;
+    memset(&address, 0, sizeof(address));
+    address.sun_family = AF_UNIX;
+    int written = snprintf(address.sun_path, sizeof address.sun_path, "%sfm27editor-%d.sock", directory, (int)getpid());
+    if (written <= 0 || (size_t)written >= sizeof address.sun_path)
+        return;
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0)
+        return;
+    unlink(address.sun_path);
+    mode_t previous = umask(0077); /* owner-only from the moment the socket exists */
+    int bound = bind(fd, (struct sockaddr *)&address, sizeof(address));
+    umask(previous);
+    if (bound != 0 || listen(fd, 4) != 0)
+    {
+        close(fd);
+        return;
+    }
+    g_plugin_listener = fd;
+    signal(SIGPIPE, SIG_IGN);
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, plugin_serve, NULL) != 0)
+    {
+        close(fd);
+        unlink(address.sun_path);
+        g_plugin_listener = -1;
+        return;
+    }
+    pthread_detach(thread);
+}
+#else
 
 static int make_fallback_listener(void)
 {
@@ -1597,3 +2288,4 @@ int main(void)
         close_slot(&g_tasks[i]);
     return 0;
 }
+#endif

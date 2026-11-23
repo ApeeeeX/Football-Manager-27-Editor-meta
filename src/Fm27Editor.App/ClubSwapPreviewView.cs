@@ -13,7 +13,11 @@ public sealed partial class MainWindow
 {
     Control BuildClubSwapPreviewCard(GameSession session, ClubEntry club)
     {
-        var open = new Button { Content = Loc.S("Preview Club Swap"), HorizontalAlignment = HorizontalAlignment.Left };
+        var open = new Button
+        {
+            Content = Loc.S("Swap Clubs"), HorizontalAlignment = HorizontalAlignment.Left,
+            IsEnabled = new ClubSwap(session.Memory, session.Profile, session.ModuleBase).IsSupported,
+        };
         open.Click += async (_, _) =>
         {
             open.IsEnabled = false;
@@ -34,83 +38,51 @@ public sealed partial class MainWindow
                 .ThenBy(item => item.Club.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                 .Take(150).Select(item => (item.Club.DisplayName, item.Club)).ToArray());
         if (second is null || !CurrentSave()) return;
-        try
+        var editor = new ClubSwap(session.Memory, session.Profile, session.ModuleBase);
+        var message = new TextBlock { Text = Loc.F("Swap {0} and {1}?", first.DisplayName, second.DisplayName), TextWrapping = TextWrapping.Wrap };
+        var close = new Button { Content = Loc.S("Close"), IsCancel = true };
+        var apply = new Button { Content = Loc.S("Swap Clubs"), Classes = { "accent" } };
+        var window = new Window
         {
-            status.Text = Loc.S("Checking both league schedules…");
-            var preview = await Task.Run(() => new ClubSwapPreview(session.Memory, session.Profile, session.ModuleBase).Read(first, second));
-            if (!CurrentSave()) return;
-            var names = clubs.SelectMany(club => club.Teams.Select(team => (team.Address, club.DisplayName)))
-                .GroupBy(team => team.Address).ToDictionary(team => team.Key, team => team.First().DisplayName);
-            string Match(ulong home, ulong away) => $"{names.GetValueOrDefault(home, Loc.S("Unknown"))} – {names.GetValueOrDefault(away, Loc.S("Unknown"))}";
-            var rows = ToolGrid.Create();
-            rows.ItemsSource = preview.Fixtures;
-            rows.Columns.Add(ToolGrid.Text<ClubSwapFixture>("Date", row => DateSetting.Format(row.Date), 105, "Date"));
-            rows.Columns.Add(ToolGrid.Text<ClubSwapFixture>("Competition", row => row.Competition.DisplayName, 168, "Competition"));
-            rows.Columns.Add(ToolGrid.Text<ClubSwapFixture>("Before", row => Match(row.Home, row.Away), 0, "Before", minWidth: 184));
-            rows.Columns.Add(ToolGrid.Text<ClubSwapFixture>("After", row => Match(row.ProposedHome, row.ProposedAway), 0, "After", minWidth: 184));
-            ToolGrid.EnableSort(rows, new Dictionary<string, Func<ClubSwapFixture, IComparable?>>
+            Title = Loc.S("Swap Clubs"), Width = 420, SizeToContent = SizeToContent.Height, CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
             {
-                ["Date"] = row => row.Date,
-                ["Competition"] = row => row.Competition.DisplayName,
-                ["Before"] = row => Match(row.Home, row.Away),
-                ["After"] = row => Match(row.ProposedHome, row.ProposedAway),
-            });
-            var title = new TextBlock
-            {
-                Text = $"{first.DisplayName} → {preview.SecondLeague.DisplayName}\n{second.DisplayName} → {preview.FirstLeague.DisplayName}",
-                FontWeight = FontWeight.SemiBold,
-            };
-            var editor = new ClubSwap(session.Memory, session.Profile, session.ModuleBase);
-            var description = new TextBlock
-            {
-                Text = Loc.F(editor.IsSupported ? "{0} affected league matches" : "{0} affected matches · Read-only preview", preview.Fixtures.Count),
-                Foreground = UiKit.TextSecondary,
-            };
-            var header = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 8), Children = { title, description } };
-            DockPanel.SetDock(header, Dock.Top);
-            var close = new Button { Content = Loc.S("Close"), IsCancel = true };
-            var apply = new Button { Content = Loc.S("Swap Clubs"), IsVisible = editor.IsSupported };
-            var actions = new StackPanel
-            {
-                Orientation = Orientation.Horizontal, Spacing = 8,
-                HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0),
-                Children = { close, apply },
-            };
-            DockPanel.SetDock(actions, Dock.Bottom);
-            var window = new Window
-            {
-                Title = Loc.S("Preview Club Swap"), Width = 920, Height = 610, MinWidth = 720, MinHeight = 420,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Content = new DockPanel { Margin = new Thickness(12), Children = { header, actions, rows } },
-            };
-            close.Click += (_, _) => window.Close();
-            apply.Click += async (_, _) =>
-            {
-                apply.IsEnabled = close.IsEnabled = false;
-                try
+                Margin = new Thickness(14), Spacing = 14,
+                Children =
                 {
-                    await Task.Run(() =>
+                    message,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { close, apply } },
+                },
+            },
+        };
+        close.Click += (_, _) => window.Close();
+        apply.Click += async (_, _) =>
+        {
+            apply.IsEnabled = close.IsEnabled = false;
+            try
+            {
+                await Task.Run(() =>
+                {
+                    var preview = new ClubSwapPreview(session.Memory, session.Profile, session.ModuleBase).Read(first, second);
+                    Func<ulong, int, ChangeLabel?>? labels = null;
+                    backend.Edits.Execute("Club", $"{first.DisplayName} ↔ {second.DisplayName}", "Swap Clubs", () =>
                     {
-                        Func<ulong, int, ChangeLabel?>? labels = null;
-                        backend.Edits.Execute("Club", $"{first.DisplayName} ↔ {second.DisplayName}", "Swap Clubs", () =>
-                        {
-                            if (!CurrentSave()) throw new SaveChangedException();
-                            labels = editor.Apply(preview);
-                        }, (address, length) => labels?.Invoke(address, length));
-                    });
-                    status.Text = Loc.F("Clubs swapped across {0} league matches", preview.Fixtures.Count);
-                    window.Close();
-                }
-                catch (Exception ex)
-                {
-                    description.Text = UserMessage.For(ex);
-                    apply.IsEnabled = true;
-                }
-                finally { close.IsEnabled = true; }
-            };
-            status.Text = description.Text;
-            await window.ShowDialog(this);
-        }
+                        if (!CurrentSave()) throw new SaveChangedException();
+                        labels = editor.Apply(preview);
+                    }, (address, length) => labels?.Invoke(address, length));
+                });
+                status.Text = Loc.F("Swapped {0} and {1}. Continue in FM to see updates.", first.DisplayName, second.DisplayName);
+                window.Close();
+            }
+            catch (Exception ex)
+            {
+                message.Text = UserMessage.For(ex);
+                apply.IsEnabled = true;
+            }
+            finally { close.IsEnabled = true; }
+        };
+        try { await window.ShowDialog(this); }
         catch (Exception ex) { status.Text = UserMessage.For(ex); }
 
         bool CurrentSave() => ReferenceEquals(backend.Data, data) && !backend.SaveChanged;

@@ -6,7 +6,7 @@ namespace Fm27Editor.Core.Memory;
 
 /// <summary>Preserves read access and history for a restricted profile, without exposing allocation or code patching.</summary>
 internal sealed class VerifiedWriteMemory(IProcessMemory source, OffsetProfile profile, ulong moduleBase)
-    : IMacMemory, IMemoryRegions, IScatterReadMemory, IMemoryWriteObserver
+    : IMacMemory, IMemoryRegions, IScatterReadMemory, IVtableHeapScanner, IMemoryWriteObserver
 {
     sealed record Target(PlayerRecord Player, bool IsLoan);
 
@@ -101,6 +101,16 @@ internal sealed class VerifiedWriteMemory(IProcessMemory source, OffsetProfile p
 
     public IEnumerable<MemoryRegion> EnumerateWritableRegions(ulong imageStart = 0, ulong imageEnd = 0) =>
         source is IMemoryRegions regions ? regions.EnumerateWritableRegions(imageStart, imageEnd) : [];
+
+    public IReadOnlyList<HeapVtableMatch>? TryScanVtables(
+        IReadOnlyList<MemoryRegion> regions,
+        ReadOnlySpan<ulong> vtables,
+        bool tolerateUnreadable,
+        bool unreadablePagesAreNotHeap,
+        CancellationToken ct) =>
+        source is IVtableHeapScanner scanner
+            ? scanner.TryScanVtables(regions, vtables, tolerateUnreadable, unreadablePagesAreNotHeap || source is IUnreadablePagesAreNotHeap, ct)
+            : null;
 
     public bool TryGetTaskDyldInfo(out ulong address, out ulong size)
     {

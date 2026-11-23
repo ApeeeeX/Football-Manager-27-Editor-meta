@@ -107,6 +107,12 @@ public sealed class CityRepository(IProcessMemory memory, OffsetProfile profile,
         if (begin == 0 || end < begin || (end - begin) % 8 != 0 || (end - begin) / 8 > MaxCities)
             throw new MemoryAccessException($"City list looks invalid (begin 0x{begin:X}, end 0x{end:X}); is a save loaded?");
         var raw = memory.Read(begin, (int)(end - begin));
+        if (memory is ReadAheadMemory ram)
+        {
+            var f = o.Fields;
+            int citySize = Math.Max(o.Nation + 8, f is null ? 0 : Math.Max(Math.Max(f.Longitude + 4, f.Altitude + 2), Math.Max(f.Latitude + 4, Math.Max(f.Inhabitants, f.Attraction) + 1)));
+            ram.Prefetch(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(raw), citySize);
+        }
         var result = new List<CityRecord>(raw.Length / 8);
         for (int i = 0; i < raw.Length; i += 8)
             if (Read(BitConverter.ToUInt64(raw, i)) is { } city) result.Add(city);

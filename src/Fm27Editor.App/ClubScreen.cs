@@ -135,10 +135,26 @@ internal class ClubScreen(IScreenHost host, IClubPanels panels)
             }
             clubs = session.LoadClubs(source.ToArray());
         }
+        var filtered = ClubCatalog.Filter(clubs, null).ToList();
         using var reads = new BulkReadScope(session.Memory);
+        if (filtered.Count > 0)
+        {
+            var clubAddrs = new ulong[filtered.Count];
+            var financeAddrs = new List<ulong>(filtered.Count);
+            var teamAddrs = new List<ulong>(filtered.Count);
+            for (int i = 0; i < filtered.Count; i++)
+            {
+                clubAddrs[i] = filtered[i].Address;
+                if (filtered[i].Finance != 0) financeAddrs.Add(filtered[i].Finance);
+                if (filtered[i].Teams.Count > 0) teamAddrs.Add(filtered[i].Teams[0].Address);
+            }
+            reads.Prefetch(clubAddrs, 0xD0);
+            if (financeAddrs.Count > 0) reads.Prefetch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(financeAddrs), 0x100);
+            if (teamAddrs.Count > 0) reads.Prefetch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(teamAddrs), 0x80);
+        }
         var access = new ClubFieldAccess(reads.Memory, session.Profile, session.ModuleBase);
         var items = new LoadedRows(clubs, fresh, date);
-        foreach (var club in ClubCatalog.Filter(clubs, null))
+        foreach (var club in filtered)
         {
             var item = new MainWindow.ClubPickerItem(club);
             try

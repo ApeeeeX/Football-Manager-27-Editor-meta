@@ -32,7 +32,7 @@ public sealed record StadiumStand(int Index, int Capacity, bool HasRoof, bool Ha
 
 public sealed record StadiumRecord(ulong Address, int Id, string? Name, ClubInfo? Owner, string? NearbyStadium,
     float Latitude, float Longitude, IReadOnlyList<StadiumStand> Stands, byte Flags, byte AltFlags = 0,
-    short? IntLength = null, short? IntWidth = null, uint SeatColour = 0)
+    short? IntLength = null, short? IntWidth = null, uint SeatColour = 0, int? Capacity = null)
 {
     public string DisplayName => Name ?? "";
     public int StandsTotal => Stands.Sum(s => s.Capacity);
@@ -135,6 +135,8 @@ public sealed class StadiumRepository(IProcessMemory memory, OffsetProfile profi
             if (root != 0 && begin != 0 && end >= begin && (end - begin) % 8 == 0 && (end - begin) / 8 <= MaxStadiums)
             {
                 var raw = memory.Read(begin, (int)(end - begin));
+                if (memory is ReadAheadMemory ram)
+                    ram.Prefetch(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(raw), ReadSize);
                 for (int i = 0; i < raw.Length; i += 8)
                     if (Decode(BitConverter.ToUInt64(raw, i), reader) is { } r) result.Add(r);
             }
@@ -175,6 +177,8 @@ public sealed class StadiumRepository(IProcessMemory memory, OffsetProfile profi
         if (anchors.Count == 0) return [];
         var result = new List<StadiumRecord>();
         var ranges = new List<(ulong Start, ulong End)>();
+        var ram = memory as ReadAheadMemory;
+        Span<ulong> prefetchPages = stackalloc ulong[64];
         foreach (ulong anchor in anchors)
         {
             // National stadiums usually point into the same table. Skip an accepted record before walking back
@@ -185,8 +189,17 @@ public sealed class StadiumRepository(IProcessMemory memory, OffsetProfile profi
             if (ranges.Any(r => start >= r.Start && anchor < r.End)) continue;
             var run = new List<StadiumRecord>();
             ulong at = start;
-            while (run.Count < MaxStadiums && Decode(at, reader) is { } record)
+            ulong prefetchedUntil = 0;
+            while (run.Count < MaxStadiums)
             {
+                if (ram is not null && at >= prefetchedUntil)
+                {
+                    ulong firstPage = at & ~4095UL;
+                    for (int k = 0; k < 64; k++) prefetchPages[k] = firstPage + (ulong)k * 4096UL;
+                    ram.Prefetch(prefetchPages, 4096);
+                    prefetchedUntil = firstPage + 64 * 4096UL;
+                }
+                if (Decode(at, reader) is not { } record) break;
                 run.Add(record);
                 at += (ulong)Stride;
             }
@@ -247,11 +260,18 @@ public sealed class StadiumRepository(IProcessMemory memory, OffsetProfile profi
             if (memory.TryRead(op, cb) && BitConverter.ToUInt64(cb) == moduleBase + k.ClubVtableRva)
                 owner = new ClubInfo(op, reader.StringAt(BitConverter.ToUInt64(cb, k.Name)), reader.StringAt(BitConverter.ToUInt64(cb, k.ShortName)));
         }
+        int? capacity = null;
+        if (s.Fields.TryGetValue(StadiumField.Capacity, out var capOff) && capOff.Path.Count == 1)
+        {
+            int capAt = capOff.Path[0], capSize = ClubFieldAccess.Size(capOff.Type);
+            if (capAt >= 0 && capAt + capSize <= b.Length)
+                capacity = (int)ClubFieldAccess.Decode(b.AsSpan(capAt, capSize), capOff);
+        }
         return new StadiumRecord(address, BitConverter.ToInt32(b, s.Id), reader.StringAt(BitConverter.ToUInt64(b, s.Name)), owner, nearby,
             BitConverter.ToSingle(b, s.Latitude), BitConverter.ToSingle(b, s.Longitude), stands, b[s.Flags], s.AltFlags >= 0 ? b[s.AltFlags] : (byte)0,
             s.IntLength >= 0 && BitConverter.ToInt16(b, s.IntLength) is var il and > 0 ? il : null,
             s.IntWidth >= 0 && BitConverter.ToInt16(b, s.IntWidth) is var iw and > 0 ? iw : null,
-            s.SeatColour >= 0 ? BitConverter.ToUInt32(b, s.SeatColour) : 0);
+            s.SeatColour >= 0 ? BitConverter.ToUInt32(b, s.SeatColour) : 0, capacity);
     }
 }
 

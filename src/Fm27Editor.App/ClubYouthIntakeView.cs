@@ -146,17 +146,17 @@ public sealed partial class MainWindow
     static Avalonia.Controls.DataGrid BuildYouthIntakeGrid(IReadOnlyList<YouthCandidate> candidates)
     {
         var grid = ToolGrid.Create();
-        grid.Columns.Add(ToolGrid.Text<YouthCandidate>("Name", c => c.DisplayName, 190, "Name", "#F1F5F9", bold: true));
-        grid.Columns.Add(ToolGrid.Text<YouthCandidate>("Position", c => c.PositionSummary, 110, "Positions rated 15 or more"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Age", c => c.Age?.ToString(Inv) ?? "", 46, "Age"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Born", c => c.DateOfBirth is { } d ? DateSetting.Format(d) : "", 96, "Date of birth"));
-        grid.Columns.Add(ToolGrid.Text<YouthCandidate>("Nationality", c => c.NationalityName ?? "", 130, "Nationality"));
-        grid.Columns.Add(ToolGrid.Text<YouthCandidate>("City", c => c.CityOfBirthName ?? "", 150, "City of birth"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Height", c => c.Height.ToString(Inv), 56, "Height (cm)"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Left", c => c.Attribute(PlayerAttribute.LeftFoot).ToString(Inv), 46, "Left foot"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Right", c => c.Attribute(PlayerAttribute.RightFoot).ToString(Inv), 46, "Right foot"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("CA", c => c.CurrentAbility.ToString(Inv), 46, "Current Ability"));
-        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("PA", c => c.PotentialAbility.ToString(Inv), 46, "Potential Ability"));
+        grid.Columns.Add(ToolGrid.StarText<YouthCandidate>("Name", c => c.DisplayName, 1.4, 125, "Name", "#F1F5F9", bold: true));
+        grid.Columns.Add(ToolGrid.StarText<YouthCandidate>("Position", c => c.PositionSummary, 0.85, 82, "Positions rated 15 or more"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Age", c => c.Age?.ToString(Inv) ?? "", 40, "Age"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Born", c => c.DateOfBirth is { } d ? DateSetting.Format(d) : "", 86, "Date of birth"));
+        grid.Columns.Add(ToolGrid.StarText<YouthCandidate>("Nationality", c => c.NationalityName ?? "", 0.9, 85, "Nationality"));
+        grid.Columns.Add(ToolGrid.StarText<YouthCandidate>("City", c => c.CityOfBirthName ?? "", 0.95, 90, "City of birth"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Height", c => c.Height.ToString(Inv), 52, "Height (cm)"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Left", c => c.Attribute(PlayerAttribute.LeftFoot).ToString(Inv), 42, "Left foot"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("Right", c => c.Attribute(PlayerAttribute.RightFoot).ToString(Inv), 42, "Right foot"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("CA", c => c.CurrentAbility.ToString(Inv), 40, "Current Ability"));
+        grid.Columns.Add(ToolGrid.Number<YouthCandidate>("PA", c => c.PotentialAbility.ToString(Inv), 40, "Potential Ability"));
         ToolGrid.SetItems(grid, candidates.ToList());
         return grid;
     }

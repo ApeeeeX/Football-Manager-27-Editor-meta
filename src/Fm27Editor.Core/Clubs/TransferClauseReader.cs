@@ -94,6 +94,28 @@ public sealed class TransferClauseReader(IProcessMemory memory, OffsetProfile pr
         return result;
     }
 
+    /// <summary>Vtable addresses required when this build scans the heap for transfer clauses.</summary>
+    public IReadOnlyList<ulong> ScanVtableAddresses
+    {
+        get
+        {
+            if (profile.Club?.TransferClauses is not { Scan: true } t) return [];
+            var list = new List<ulong>(3) { moduleBase + t.SellOnVtableRva };
+            if (t.AppearanceFeeVtableRva is { } a) list.Add(moduleBase + a);
+            if (t.CompetitionBonusVtableRva is { } c) list.Add(moduleBase + c);
+            return list;
+        }
+    }
+
+    /// <summary>Populates the scanned clause candidates from an external shared heap pass.</summary>
+    public void PreloadScanned(IReadOnlyList<ulong> candidates)
+    {
+        lock (_scanLock)
+        {
+            _scanned ??= [.. candidates];
+        }
+    }
+
     /// <summary>Runs the one-off clause scan now, so the first Contract card opens with its clauses already found.</summary>
     public void EnsureLoaded()
     {
@@ -156,39 +178,47 @@ public sealed class TransferClauseReader(IProcessMemory memory, OffsetProfile pr
                 var sell = moduleBase + t.SellOnVtableRva;
                 ulong? appearance = t.AppearanceFeeVtableRva is { } a ? moduleBase + a : null;
                 ulong? competition = t.CompetitionBonusVtableRva is { } c ? moduleBase + c : null;
-                // Reading the game's writable memory is I/O bound (~4 GB, ~200 MB/s on one thread), so the one-off
-                // scan reads regions in parallel; matches are rare, so workers collect locally and merge once.
-                var hits = new List<ulong>();
-                Parallel.ForEach(regions.EnumerateWritableRegions().Where(r => !r.IsModuleData),
-                    new ParallelOptions { MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 8) }, region =>
+                var targetRegions = regions.EnumerateWritableRegions().Where(r => !r.IsModuleData && !r.IsGuard).ToArray();
+                if (memory is IVtableHeapScanner nativeScanner)
                 {
-                    var buffer = new byte[1 << 22];
-                    var local = new List<ulong>();
+                    var targets = new List<ulong>(3) { sell };
+                    if (appearance is { } ap) targets.Add(ap);
+                    if (competition is { } cp) targets.Add(cp);
+                    if (nativeScanner.TryScanVtables(targetRegions, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(targets),
+                        tolerateUnreadable: true, memory is IUnreadablePagesAreNotHeap, CancellationToken.None) is { } fastHits)
+                    {
+                        found.AddRange(fastHits.Select(m => m.Address));
+                        return _scanned = found;
+                    }
+                }
+                // Windows supports concurrent reads across workers; serial providers run on one thread to avoid lock contention.
+                var hits = new List<ulong>();
+                void ScanRegion(MemoryRegion region, byte[] buffer, List<ulong> local)
+                {
+                    var v0 = new System.Numerics.Vector<ulong>(sell);
+                    var v1 = new System.Numerics.Vector<ulong>(appearance ?? ulong.MaxValue);
+                    var v2 = new System.Numerics.Vector<ulong>(competition ?? ulong.MaxValue);
+                    int lanes = System.Numerics.Vector<ulong>.Count;
                     for (ulong offset = 0; offset + 8 <= region.Size; offset += (ulong)buffer.Length)
                     {
                         int length = (int)Math.Min((ulong)buffer.Length, region.Size - offset);
                         if (!memory.TryRead(region.Start + offset, buffer.AsSpan(0, length))) break;
                         var words = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(buffer.AsSpan(0, length));
                         int w = 0;
-                        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated)
+                        if (System.Numerics.Vector.IsHardwareAccelerated)
                         {
-                            var v0 = System.Runtime.Intrinsics.Vector256.Create(sell);
-                            var v1 = System.Runtime.Intrinsics.Vector256.Create(appearance ?? ulong.MaxValue);
-                            var v2 = System.Runtime.Intrinsics.Vector256.Create(competition ?? ulong.MaxValue);
-                            int lanes = System.Runtime.Intrinsics.Vector256<ulong>.Count;
                             for (; w + lanes <= words.Length; w += lanes)
                             {
-                                var value = System.Runtime.Intrinsics.Vector256.LoadUnsafe(ref System.Runtime.InteropServices.MemoryMarshal.GetReference(words.Slice(w)));
-                                var match = System.Runtime.Intrinsics.Vector256.Equals(value, v0)
-                                    | System.Runtime.Intrinsics.Vector256.Equals(value, v1)
-                                    | System.Runtime.Intrinsics.Vector256.Equals(value, v2);
-                                if (match == System.Runtime.Intrinsics.Vector256<ulong>.Zero) continue;
-                                uint bits = System.Runtime.Intrinsics.Vector256.ExtractMostSignificantBits(match);
-                                while (bits != 0)
+                                var block = new System.Numerics.Vector<ulong>(words[w..]);
+                                bool any = System.Numerics.Vector.EqualsAny(block, v0)
+                                    || (appearance.HasValue && System.Numerics.Vector.EqualsAny(block, v1))
+                                    || (competition.HasValue && System.Numerics.Vector.EqualsAny(block, v2));
+                                if (!any) continue;
+                                for (int lane = 0; lane < lanes; lane++)
                                 {
-                                    int lane = System.Numerics.BitOperations.TrailingZeroCount(bits);
-                                    bits &= bits - 1;
-                                    local.Add(region.Start + offset + (ulong)(w + lane) * 8);
+                                    ulong v = words[w + lane];
+                                    if (v == sell || v == appearance || v == competition)
+                                        local.Add(region.Start + offset + (ulong)(w + lane) * 8);
                                 }
                             }
                         }
@@ -198,8 +228,23 @@ public sealed class TransferClauseReader(IProcessMemory memory, OffsetProfile pr
                             if (v == sell || v == appearance || v == competition) local.Add(region.Start + offset + (ulong)w * 8);
                         }
                     }
-                    lock (hits) hits.AddRange(local);
-                });
+                }
+                if (memory is IConcurrentMemoryReads)
+                {
+                    Parallel.ForEach(targetRegions,
+                        new ParallelOptions { MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 8) }, region =>
+                    {
+                        var buffer = new byte[1 << 22];
+                        var local = new List<ulong>();
+                        ScanRegion(region, buffer, local);
+                        if (local.Count > 0) lock (hits) hits.AddRange(local);
+                    });
+                }
+                else
+                {
+                    var buffer = new byte[1 << 22];
+                    foreach (var region in targetRegions) ScanRegion(region, buffer, hits);
+                }
                 found.AddRange(hits);
             }
             return _scanned = found;

@@ -13,6 +13,13 @@ public readonly record struct Arm64Word(uint Value, uint Mask = uint.MaxValue)
     public bool Matches(uint word) => (word & Mask) == (Value & Mask);
 }
 
+/// <summary>Cached raw bytes of executable <c>__TEXT</c> sections for sharing across multiple hook-site lookups.</summary>
+public sealed class Arm64CodeSnapshot
+{
+    internal readonly IReadOnlyList<(ulong Start, byte[] Bytes)> Sections;
+    internal Arm64CodeSnapshot(IReadOnlyList<(ulong Start, byte[] Bytes)> sections) => Sections = sections;
+}
+
 /// <summary>
 /// Finds the instruction sequence of a hook site in the image's own <c>__text</c>.
 /// </summary>
@@ -82,59 +89,135 @@ public static class Arm64SiteFinder
     /// address lets the caller read them back from its own block).
     /// </param>
     /// <exception cref="InvalidOperationException">No match, more than one match, or a hit that is not 4-byte aligned.</exception>
+    /// <summary>Reads all executable <c>__TEXT</c> sections once so several hooks can search them without repeated IPC reads; null on failure.</summary>
+    public static Arm64CodeSnapshot? TryCaptureCode(IProcessMemory memory, ulong moduleBase, ulong moduleSize)
+    {
+        try
+        {
+            var sections = new List<(ulong Start, byte[] Bytes)>();
+            foreach (var (start, size) in CodeSections(memory, moduleBase, moduleSize))
+            {
+                if (size > 512UL * 1024 * 1024) return null;
+                var bytes = new byte[size];
+                int off = 0;
+                while (off < bytes.Length)
+                {
+                    int take = Math.Min(1 << 22, bytes.Length - off);
+                    if (!memory.TryRead(start + (ulong)off, bytes.AsSpan(off, take))) return null;
+                    off += take;
+                }
+                sections.Add((start, bytes));
+            }
+            return new Arm64CodeSnapshot(sections);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or MemoryAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Verifies whether a previously located instruction sequence still sits at <paramref name="at"/>.</summary>
+    public static bool TryVerifyAt(IProcessMemory memory, ulong at, IReadOnlyList<Arm64Word> pattern,
+        Func<uint, bool>? patched = null, int patchedFrom = 0, Func<uint[], ulong, bool>? accept = null)
+    {
+        if (at == 0 || (at & 3) != 0 || pattern.Count == 0 || pattern.Count > 16) return false;
+        Span<byte> raw = stackalloc byte[pattern.Count * 4];
+        if (!memory.TryRead(at, raw)) return false;
+        var span = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(raw);
+        bool matches = MatchesWords(span, pattern, 0);
+        if (!matches && (patched is null || !patched(span[0]) || !MatchesWords(span, pattern, patchedFrom)))
+            return false;
+        return accept is null || accept(ReadWordsFromSpan(span), at);
+    }
+
     public static ulong Find(IProcessMemory memory, ulong moduleBase, ulong moduleSize, string feature,
         IReadOnlyList<Arm64Word> pattern, Func<uint, bool>? patched = null, int patchedFrom = 0,
-        Func<uint[], ulong, bool>? accept = null)
+        Func<uint[], ulong, bool>? accept = null, Arm64CodeSnapshot? snapshot = null)
     {
         if (pattern.Count == 0) throw new ArgumentException("An empty pattern matches everywhere", nameof(pattern));
         var hits = new List<ulong>();
-        foreach (var (start, size) in CodeSections(memory, moduleBase, moduleSize))
+        int bytes = pattern.Count * 4;
+        if (snapshot is not null)
         {
-            const int Chunk = 1 << 20;
-            int bytes = pattern.Count * 4;
-            var buffer = new byte[Chunk + bytes];
-            for (ulong offset = 0; offset < size; offset += Chunk)
+            foreach (var (start, sectionBytes) in snapshot.Sections)
             {
-                int length = (int)Math.Min((ulong)buffer.Length, size - offset);
-                if (!memory.TryRead(start + offset, buffer.AsSpan(0, length))) continue;
-                int limit = Math.Min(Chunk, length - bytes + 1);
-                for (int i = 0; i < limit; i += 4)
+                if (sectionBytes.Length < bytes) continue;
+                ScanSpan(start, sectionBytes, sectionBytes.Length - bytes + 4, pattern, patched, patchedFrom, accept, hits);
+                if (hits.Count > 1) break;
+            }
+        }
+        else
+        {
+            foreach (var (start, size) in CodeSections(memory, moduleBase, moduleSize))
+            {
+                const int Chunk = 1 << 22;
+                var buffer = new byte[Chunk + bytes];
+                for (ulong offset = 0; offset < size; offset += Chunk)
                 {
-                    ulong here = start + offset + (ulong)i;
-                    if ((here & 3) != 0) continue;
-                    var words = buffer.AsSpan(i);
-                    if (Matches(words, pattern, 0))
-                    {
-                        if (accept is null || accept(ReadWords(words, pattern.Count), here)) hits.Add(here);
-                        continue;
-                    }
-                    if (patched is null || !patched(BinaryPrimitives.ReadUInt32LittleEndian(words))) continue;
-                    if (!Matches(words, pattern, patchedFrom)) continue;
-                    if (accept is null || accept(ReadWords(words, pattern.Count), here)) hits.Add(here);
+                    int length = (int)Math.Min((ulong)buffer.Length, size - offset);
+                    if (length < bytes) continue;
+                    if (!memory.TryRead(start + offset, buffer.AsSpan(0, length))) continue;
+                    int limitBytes = Math.Min(Chunk, length - bytes + 4);
+                    ScanSpan(start + offset, buffer.AsSpan(0, length), limitBytes, pattern, patched, patchedFrom, accept, hits);
+                    if (hits.Count > 1) break;
                 }
                 if (hits.Count > 1) break;
             }
-            if (hits.Count > 1) break;
         }
         if (hits.Count == 0) throw new InvalidOperationException($"{feature}: the code was not found in this build");
         if (hits.Count > 1) throw new InvalidOperationException($"{feature}: the code is not unique in this build");
         return hits[0];
     }
 
-    static bool Matches(ReadOnlySpan<byte> words, IReadOnlyList<Arm64Word> pattern, int from)
+    static void ScanSpan(
+        ulong baseAddress,
+        ReadOnlySpan<byte> span,
+        int limitBytes,
+        IReadOnlyList<Arm64Word> pattern,
+        Func<uint, bool>? patched,
+        int patchedFrom,
+        Func<uint[], ulong, bool>? accept,
+        List<ulong> hits)
+    {
+        int wordLimit = limitBytes / 4;
+        var words = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(span);
+        uint mask0 = pattern[0].Mask;
+        uint val0 = pattern[0].Value & mask0;
+        int count = pattern.Count;
+        for (int w = 0; w < wordLimit; w++)
+        {
+            uint w0 = words[w];
+            if ((w0 & mask0) == val0)
+            {
+                if (MatchesWords(words[w..], pattern, 1))
+                {
+                    ulong here = baseAddress + (ulong)w * 4;
+                    if ((here & 3) == 0 && (accept is null || accept(ReadWordsFromSpan(words.Slice(w, count)), here)))
+                        hits.Add(here);
+                    if (hits.Count > 1) return;
+                }
+                continue;
+            }
+            if (patched is null || !patched(w0)) continue;
+            if (!MatchesWords(words[w..], pattern, patchedFrom)) continue;
+            ulong patchedHere = baseAddress + (ulong)w * 4;
+            if ((patchedHere & 3) == 0 && (accept is null || accept(ReadWordsFromSpan(words.Slice(w, count)), patchedHere)))
+                hits.Add(patchedHere);
+            if (hits.Count > 1) return;
+        }
+    }
+
+    static bool MatchesWords(ReadOnlySpan<uint> words, IReadOnlyList<Arm64Word> pattern, int from)
     {
         for (int i = from; i < pattern.Count; i++)
-        {
-            uint word = BinaryPrimitives.ReadUInt32LittleEndian(words[(i * 4)..]);
-            if (!pattern[i].Matches(word)) return false;
-        }
+            if (!pattern[i].Matches(words[i])) return false;
         return true;
     }
 
-    static uint[] ReadWords(ReadOnlySpan<byte> words, int count)
+    static uint[] ReadWordsFromSpan(ReadOnlySpan<uint> words)
     {
-        var read = new uint[count];
-        for (int i = 0; i < count; i++) read[i] = BinaryPrimitives.ReadUInt32LittleEndian(words[(i * 4)..]);
+        var read = new uint[words.Length];
+        words.CopyTo(read);
         return read;
     }
 }

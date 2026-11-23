@@ -104,6 +104,14 @@ public sealed class FreezeRunner
         if (old is not null && old.AcceptEdit(staffMember, attribute)) Persist();
     }
 
+    /// <summary>A deliberate editor change becomes the new frozen CA.</summary>
+    public void AcceptStaffAbilityEdit(StaffRecord staffMember)
+    {
+        CheckSave();
+        var old = staff.FirstOrDefault(s => s.Id == staffMember.Id);
+        if (old is not null && old.AcceptAbilityEdit(staffMember)) Persist();
+    }
+
     public void SetClub(ClubEntry club, FreezeMode mode)
     {
         CheckSave();
@@ -134,6 +142,10 @@ public sealed class FreezeRunner
 
     static bool SameValues(SavedFreezes a, SavedFreezes b) =>
         a.Players.Length == b.Players.Length && a.Clubs.SequenceEqual(b.Clubs) &&
-        (a.Staff ?? []).SequenceEqual(b.Staff ?? []) &&
+        SameStaff(a.Staff ?? [], b.Staff ?? []) &&
         a.Players.Zip(b.Players).All(pair => pair.First.Id == pair.Second.Id && pair.First.Fields.SequenceEqual(pair.Second.Fields));
+
+    static bool SameStaff(SavedFrozenStaff[] a, SavedFrozenStaff[] b) =>
+        a.Length == b.Length && a.Zip(b).All(pair => pair.First.Id == pair.Second.Id &&
+            pair.First.CurrentAbility == pair.Second.CurrentAbility && pair.First.Fields.SequenceEqual(pair.Second.Fields));
 }

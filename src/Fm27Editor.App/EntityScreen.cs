@@ -542,7 +542,7 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
             var line = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                MinHeight = 26,
+                MinHeight = 25,
                 VerticalAlignment = VerticalAlignment.Center,
             };
             Grid.SetColumn(text, 0);
@@ -552,7 +552,7 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
             stack.Children.Add(new Border
             {
                 Background = idx++ % 2 == 1 ? UiKit.SurfaceZebra : Brushes.Transparent,
-                Padding = new Thickness(12, 3),
+                Padding = new Thickness(10, 2),
                 Child = line,
             });
         }
