@@ -65,6 +65,13 @@ public static partial class Loc
         m["Manager Unlockables"] = "Tùy chọn HLV";
         m["All Players Interested"] = "Mọi cầu thủ đều quan tâm";
         m["Become Unsackable"] = "Không bị sa thải";
+        m["Set"] = "Đặt";
+        m["In Possession Shape"] = "Đội hình khi có bóng";
+        m["Tactical understanding: {0} value(s) changed. Continue in FM to see updates."] = "Hiểu chiến thuật: đã đổi {0} giá trị. Nhấn Continue trong FM để cập nhật.";
+        m["Allow Squad Registration Anytime"] = "Đăng ký đội hình bất cứ lúc nào";
+        m["Allow Squad Numbers Anytime"] = "Đổi số áo bất cứ lúc nào";
+        m["Lets this manager change squad registration at any time."] = "Cho phép HLV này đổi đăng ký đội hình bất cứ lúc nào.";
+        m["Lets this manager change squad numbers at any time."] = "Cho phép HLV này đổi số áo bất cứ lúc nào.";
         m["Makes players interested in joining this manager's club."] = "Khiến cầu thủ quan tâm đến việc gia nhập CLB của HLV này.";
         m["Prevents this manager from being sacked."] = "Ngăn HLV này bị sa thải.";
         m["All position groups"] = "Mọi nhóm vị trí";

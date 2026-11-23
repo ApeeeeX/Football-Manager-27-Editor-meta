@@ -7,6 +7,7 @@
   "gameUiRva": "0x5774B60",
   "gameUiVtable": "0x557E060",
   "gameUiLoadsOffset": "0x100",
+  "teamTactics": { "managersRva": "0x5778320", "entries": "0x20", "teamTree": "0x8", "treeKey": "0x20", "treeValue": "0x28", "tactics": "0x1008", "flagsA": "0xE0", "flagsB": "0xE8" },
   "vectorAllocator": { "instanceRva": "0x5791750", "pools": "0x18", "pooled": "0x34", "header": "0x30", "poolCapacity": "0x144", "poolHeader": "0x148" },
   "retirementManagerRva": "0x57782B8",
   "retirementManagerVtable": "0x56C43F8",
@@ -1199,7 +1200,9 @@
     "managerUnlockables": {
       "flags": "0x3FC",
       "allPlayersInterested": "0x1",
-      "becomeUnsackable": "0x2"
+      "becomeUnsackable": "0x2",
+      "squadRegistrationAnytime": "0x100",
+      "squadNumbersAnytime": "0x200"
     },
     "allowances": {
       "teamManager": "0x80",

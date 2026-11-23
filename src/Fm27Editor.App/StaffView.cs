@@ -43,7 +43,8 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
     : EntityScreen<StaffRecord, StaffRow, StaffDraft>(host, "staff", "Staff", "staff", "Search staff name or ID...")
 {
     const string AllClubs = "All clubs", AllJobs = "All jobs";
-    const string InterestedUnlockable = "unlock:All Players Interested", UnsackableUnlockable = "unlock:Become Unsackable";
+    const string InterestedUnlockable = "unlock:All Players Interested", UnsackableUnlockable = "unlock:Become Unsackable",
+        RegistrationUnlockable = "unlock:Allow Squad Registration Anytime", NumbersUnlockable = "unlock:Allow Squad Numbers Anytime";
 
     /// <summary>Freeze / Unfreeze for every staff member selected in the list, as one history entry.</summary>
     protected override IEnumerable<(string Label, Action<IReadOnlyList<StaffRecord>> Run)> ContextActions()
@@ -242,13 +243,16 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
         var w = Host.Backend.Session.StaffWriter;
         bool? interested = v.TryGetValue(InterestedUnlockable, out int interestFlag) ? interestFlag == 1 : null;
         bool? unsackable = v.TryGetValue(UnsackableUnlockable, out int unsackableFlag) ? unsackableFlag == 1 : null;
+        bool? registration = v.TryGetValue(RegistrationUnlockable, out int registrationFlag) ? registrationFlag == 1 : null;
+        bool? numbers = v.TryGetValue(NumbersUnlockable, out int numbersFlag) ? numbersFlag == 1 : null;
         write = () =>
         {
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("attr:", StringComparison.Ordinal)))
                 { var attribute = Enum.Parse<StaffAttribute>(key[5..]); w.SetAttribute(s, attribute, value); if (Host.Backend.Session.Staff.Reload(s.Address) is { } written) Host.Backend.AcceptFrozenStaffEdit(written, attribute); }
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("mgr:", StringComparison.Ordinal)))
                 w.SetManagerAttribute(s, Enum.Parse<ManagerAttribute>(key[4..]), value);
-            if (interested.HasValue || unsackable.HasValue) w.SetManagerUnlockables(s, interested, unsackable);
+            if (interested.HasValue || unsackable.HasValue || registration.HasValue || numbers.HasValue)
+                w.SetManagerUnlockables(s, interested, unsackable, registration, numbers);
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("pers:", StringComparison.Ordinal)))
                 w.SetPersonality(s, Enum.Parse<StaffPersonality>(key[5..]), value);
             if (v.TryGetValue("caps", out int caps)) w.SetCaps(s, caps);
@@ -477,10 +481,16 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
                 };
                 return check;
             }
-            col[0].Children.Add(UiKit.Card("Manager Unlockables (Experimental)", Rows([
+            var unlockableRows = new List<(string, Control)>
+            {
                 ("All Players Interested", Flag(InterestedUnlockable, flags.AllPlayersInterested, "Makes players interested in joining this manager's club.")),
                 ("Become Unsackable", Flag(UnsackableUnlockable, flags.BecomeUnsackable, "Prevents this manager from being sacked.")),
-            ])));
+            };
+            if (flags.SquadRegistrationAnytime is { } registrationOn)
+                unlockableRows.Add(("Allow Squad Registration Anytime", Flag(RegistrationUnlockable, registrationOn, "Lets this manager change squad registration at any time.")));
+            if (flags.SquadNumbersAnytime is { } numbersOn)
+                unlockableRows.Add(("Allow Squad Numbers Anytime", Flag(NumbersUnlockable, numbersOn, "Lets this manager change squad numbers at any time.")));
+            col[0].Children.Add(UiKit.Card("Manager Unlockables (Experimental)", Rows(unlockableRows)));
         }
         col[0].Children.Add(UiKit.Card("Personality", Rows(Enum.GetValues<StaffPersonality>()
             .Select(t => (t.ToString(), (Control)Box($"pers:{t}", s.Personality[(int)t].ToString(Inv)))))));

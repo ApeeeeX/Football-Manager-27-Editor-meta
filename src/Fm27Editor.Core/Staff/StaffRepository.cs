@@ -4,7 +4,8 @@ using Fm27Editor.Core.Players;
 
 namespace Fm27Editor.Core.Staff;
 
-public sealed record ManagerUnlockableState(uint Raw, bool AllPlayersInterested, bool BecomeUnsackable);
+public sealed record ManagerUnlockableState(uint Raw, bool AllPlayersInterested, bool BecomeUnsackable,
+    bool? SquadRegistrationAnytime = null, bool? SquadNumbersAnytime = null);
 
 /// <summary>One staff member as read. Attributes are display values 1–20, indexed by <see cref="StaffAttribute"/>.</summary>
 public sealed record StaffRecord
@@ -165,7 +166,9 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
         if (kind.Manager && s.ManagerUnlockables is { } layout)
         {
             uint raw = BitConverter.ToUInt32(st, layout.Flags);
-            unlockableState = new(raw, (raw & layout.AllPlayersInterested) != 0, (raw & layout.BecomeUnsackable) != 0);
+            unlockableState = new(raw, (raw & layout.AllPlayersInterested) != 0, (raw & layout.BecomeUnsackable) != 0,
+                layout.SquadRegistrationAnytime is { } registration ? (raw & registration) != 0 : null,
+                layout.SquadNumbersAnytime is { } numbers ? (raw & numbers) != 0 : null);
         }
 
         var attrs = new byte[Enum.GetValues<StaffAttribute>().Length];
@@ -336,13 +339,18 @@ public sealed class StaffWriter(IProcessMemory memory, OffsetProfile profile, ul
         Write(staff, staff.StaffAddress + (ulong)off, [current[(int)attribute]], [(byte)value]);
     }
 
-    public void SetManagerUnlockables(StaffRecord staff, bool? allPlayersInterested, bool? becomeUnsackable)
+    public void SetManagerUnlockables(StaffRecord staff, bool? allPlayersInterested, bool? becomeUnsackable,
+        bool? squadRegistrationAnytime = null, bool? squadNumbersAnytime = null)
     {
         if (!staff.Kind.Manager || staff.ManagerUnlockables is not { } snapshot || S.ManagerUnlockables is not { } layout)
             throw new InvalidOperationException("Manager unlockables are unavailable for this staff member");
         uint after = snapshot.Raw;
         if (allPlayersInterested is { } interested) after = SetFlag(after, layout.AllPlayersInterested, interested);
         if (becomeUnsackable is { } unsackable) after = SetFlag(after, layout.BecomeUnsackable, unsackable);
+        if (squadRegistrationAnytime is { } registration)
+            after = SetFlag(after, layout.SquadRegistrationAnytime ?? throw new InvalidOperationException("Squad registration flag is not measured on this build"), registration);
+        if (squadNumbersAnytime is { } numbers)
+            after = SetFlag(after, layout.SquadNumbersAnytime ?? throw new InvalidOperationException("Squad numbers flag is not measured on this build"), numbers);
         if (after != snapshot.Raw)
             Write(staff, staff.StaffAddress + (ulong)layout.Flags, BitConverter.GetBytes(snapshot.Raw), BitConverter.GetBytes(after));
 

@@ -591,6 +591,12 @@ public sealed partial class MainWindow : IClubPanels
         if (section == ClubSection.TacticalUnderstanding)
         {
             if (orderedTeams.Count > 1) clubEditorPanel.Children.Add(BuildClubTeamSelector(club, orderedTeams, teamAddr));
+            if (BuildTeamTacticsCard(backend.Session, club, teamAddr) is { } tactics)
+            {
+                clubEditorPanel.Children.Add(tactics);
+                clubEditorPanel.Children.Add(BuildTeamCohesionCard(session: backend.Session, club, orderedTeams.FirstOrDefault(t => t.Address == teamAddr)));
+                return;
+            }
             // FMRTE: the Tactical Understanding card has a Max button that sets every bar to 100; Team Cohesion has its own.
             var max = new Button { Content = Loc.S("Max"), Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Left };
             max.Click += (_, _) =>
@@ -641,6 +647,69 @@ public sealed partial class MainWindow : IClubPanels
 
         var items = groups.Select(g => (BuildClubGroupCard(g, draft), g.Fields.Count)).ToList();
         clubEditorPanel.Children.Add(UiKit.TwoColumnMasonry(items, gap: 14));
+    }
+
+    /// <summary>The six areas of the team's current tactics, each editable for the whole squad; null when those tactics are unknown.</summary>
+    Control? BuildTeamTacticsCard(GameSession session, ClubEntry club, ulong team)
+    {
+        var tactics = new TeamTacticalUnderstanding(session.Memory, session.Profile, session.ModuleBase);
+        if (!tactics.IsSupported) return null;
+        IReadOnlyList<PlayerRecord> squad;
+        int[]? values;
+        try { squad = session.ReadSquad(team); values = tactics.Read(team, squad); }
+        catch (Exception ex) { status.Text = UserMessage.For(ex); return null; }
+        if (values is null) return null;
+        var boxes = new TextBox[TeamTacticalUnderstanding.Areas];
+        void Refresh()
+        {
+            if (tactics.Read(team, squad) is not { } now) return;
+            for (int i = 0; i < boxes.Length; i++) boxes[i].Text = now[i].ToString(Inv);
+        }
+        void Run(string label, Func<int> write)
+        {
+            try
+            {
+                int changed = 0;
+                backend.Edits.Execute("Club", club.DisplayName, label, () => changed = write());
+                Refresh();
+                status.Text = Loc.F("Tactical understanding: {0} value(s) changed. Continue in FM to see updates.", changed);
+            }
+            catch (Exception ex) { status.Text = UserMessage.For(ex); }
+        }
+        var rows = new StackPanel { Spacing = 4, Margin = new Thickness(12, 8) };
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            int area = i;
+            string name = PlayerTacticalUnderstanding.AreaNames[area];
+            var box = boxes[area] = new TextBox { Text = values[area].ToString(Inv), Width = 64 };
+            var set = new Button { Content = Loc.S("Set") };
+            set.Click += (_, _) =>
+            {
+                if (!int.TryParse(box.Text, System.Globalization.NumberStyles.Integer, Inv, out int value) || value is < 0 or > 100)
+                {
+                    status.Text = Loc.S("Value is outside the allowed range");
+                    return;
+                }
+                Run(name, () => tactics.Set(team, squad, area, value, session.AllocateGameBlock));
+            };
+            var row = new DockPanel();
+            DockPanel.SetDock(set, Dock.Right);
+            DockPanel.SetDock(box, Dock.Right);
+            row.Children.Add(set);
+            row.Children.Add(box);
+            row.Children.Add(new TextBlock { Text = Loc.S(name), FontSize = 13, Foreground = UiKit.TextSecondary, VerticalAlignment = VerticalAlignment.Center });
+            rows.Children.Add(row);
+        }
+        var max = new Button { Content = Loc.S("Max"), Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(12, 0, 12, 8) };
+        max.Click += (_, _) => Run("Tactical Understanding", () =>
+        {
+            int changed = tactics.Maximise(team, squad, session.AllocateGameBlock);
+            var players = new PlayerTacticalUnderstanding(session.Memory, session.Profile, session.ModuleBase);
+            foreach (var player in squad) changed += players.Maximise(player);
+            return changed;
+        });
+        rows.Children.Add(max);
+        return UiKit.Card("Tactical Understanding", rows);
     }
 
     /// <summary>FMRTE's Team Cohesion card: the squad average, and Max sets every squad player's cohesion to the top.</summary>

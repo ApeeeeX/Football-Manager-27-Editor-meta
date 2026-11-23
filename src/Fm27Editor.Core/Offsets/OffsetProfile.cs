@@ -115,6 +115,7 @@ public sealed class OffsetProfile
     public LanguageOffsets? Languages { get; init; }
     public PromiseOffsets? Promises { get; init; }
     public TacticalUnderstandingOffsets? TacticalUnderstanding { get; init; }
+    public Players.TeamTacticOffsets? TeamTactics { get; init; }
     public CityOffsets? Cities { get; init; }
     public CohesionOffsets? Cohesion { get; init; }
     public CareerPlanOffsets? CareerPlans { get; init; }
@@ -194,6 +195,10 @@ public sealed class OffsetProfile
             GameUiRva = gameUiRva,
             GameUiVtable = gameUiVtable,
             GameUiLoadsOffset = gameUiLoads,
+            TeamTactics = root.TryGetProperty("teamTactics", out var teamTactics)
+                ? new Players.TeamTacticOffsets((uint)Hex(teamTactics, "managersRva"), Hex(teamTactics, "entries"), Hex(teamTactics, "teamTree"),
+                    Hex(teamTactics, "treeKey"), Hex(teamTactics, "treeValue"), Hex(teamTactics, "tactics"), Hex(teamTactics, "flagsA"), Hex(teamTactics, "flagsB"))
+                : null,
             VectorAllocator = root.TryGetProperty("vectorAllocator", out var vecAlloc)
                 ? new VectorAllocatorOffsets((uint)Hex(vecAlloc, "instanceRva"), Hex(vecAlloc, "pools"), Hex(vecAlloc, "pooled"), Hex(vecAlloc, "header"), Hex(vecAlloc, "poolCapacity"), Hex(vecAlloc, "poolHeader"))
                 : null,

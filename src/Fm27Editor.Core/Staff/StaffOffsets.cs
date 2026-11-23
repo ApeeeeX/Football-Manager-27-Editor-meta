@@ -110,7 +110,9 @@ public sealed class StaffOffsets
                 Hex(al, "msccExtraStaff")) : null,
             ManagerUnlockables = e.TryGetProperty("managerUnlockables", out var unlockables) ? new StaffUnlockableOffsets(
                 Hex(unlockables, "flags"), (uint)Hex(unlockables, "allPlayersInterested"),
-                (uint)Hex(unlockables, "becomeUnsackable")) : null,
+                (uint)Hex(unlockables, "becomeUnsackable"),
+                unlockables.TryGetProperty("squadRegistrationAnytime", out _) ? (uint)Hex(unlockables, "squadRegistrationAnytime") : null,
+                unlockables.TryGetProperty("squadNumbersAnytime", out _) ? (uint)Hex(unlockables, "squadNumbersAnytime") : null) : null,
         };
     }
 
@@ -138,6 +140,8 @@ public sealed class StaffOffsets
             H("flags", unlockables.Flags);
             H("allPlayersInterested", unlockables.AllPlayersInterested);
             H("becomeUnsackable", unlockables.BecomeUnsackable);
+            if (unlockables.SquadRegistrationAnytime is { } registration) H("squadRegistrationAnytime", registration);
+            if (unlockables.SquadNumbersAnytime is { } numbers) H("squadNumbersAnytime", numbers);
             w.WriteEndObject();
         }
         if (KnowledgeHolder is { } kh) H("knowledgeHolder", kh);
@@ -193,7 +197,8 @@ public sealed record StaffPersonDetails(uint PersonVtableRva, int Caps, int Goal
 /// </summary>
 public sealed record StaffAllowanceOffsets(int TeamManager, int HumanMscc, int MsccExtraStaff);
 
-public sealed record StaffUnlockableOffsets(int Flags, uint AllPlayersInterested, uint BecomeUnsackable);
+public sealed record StaffUnlockableOffsets(int Flags, uint AllPlayersInterested, uint BecomeUnsackable,
+    uint? SquadRegistrationAnytime = null, uint? SquadNumbersAnytime = null);
 
 /// <summary>Coaching licence codes, from FMRTE 27 writing each choice in turn on Paolo Orlandoni (Steam 27.0.1, 12/11/2026).</summary>
 public enum StaffLicense : sbyte

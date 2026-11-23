@@ -22,7 +22,9 @@ public class ManagerUnlockableTests
         var repo = new StaffRepository(world.Memory, profile, TestWorld.ModuleBase);
         var writer = new StaffWriter(world.Memory, profile, TestWorld.ModuleBase);
         var before = repo.Reload(address)!;
-        Assert.Equal(new ManagerUnlockableState(0x4100400A, false, true), before.ManagerUnlockables);
+        // Bits 0x100 and 0x200 are clear in 0x4100400A; a build without those measured flags reports them as unknown.
+        bool? anytime = profile.Staff!.ManagerUnlockables!.SquadRegistrationAnytime is null ? null : false;
+        Assert.Equal(new ManagerUnlockableState(0x4100400A, false, true, anytime, anytime), before.ManagerUnlockables);
 
         writer.SetManagerUnlockables(before, allPlayersInterested: true, becomeUnsackable: null);
         Assert.Equal(0x4100400Bu, BitConverter.ToUInt32(manager, 0x3FC));
@@ -30,7 +32,7 @@ public class ManagerUnlockableTests
 
         var current = repo.Reload(address)!;
         writer.SetManagerUnlockables(current, allPlayersInterested: null, becomeUnsackable: false);
-        Assert.Equal(new ManagerUnlockableState(0x41004009, true, false), repo.Reload(address)!.ManagerUnlockables);
+        Assert.Equal(new ManagerUnlockableState(0x41004009, true, false, anytime, anytime), repo.Reload(address)!.ManagerUnlockables);
 
         var latest = repo.Reload(address)!;
         BitConverter.GetBytes(222000002).CopyTo(manager, 0x554);
@@ -61,5 +63,24 @@ public class ManagerUnlockableTests
         writer.SetManagerUnlockables(before, allPlayersInterested: null, becomeUnsackable: true);
         Assert.Equal(2u, BitConverter.ToUInt32(manager, 0x3FC));
         Assert.Equal(new ManagerUnlockableState(2, false, true), repo.Reload(address)!.ManagerUnlockables);
+    }
+
+    /// <summary>Steam 27.1.0 macOS, 23/11/2026: the IGE's Allow Squad Registration Anytime changed staff + 0x3FC from 0 to 0x100,
+    /// and Allow Squad Numbers Anytime then changed it from 0x100 to 0x300.</summary>
+    [Fact]
+    public void Squad_anytime_flags_are_the_bits_the_ige_sets_on_steam_mac()
+    {
+        var profile = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", "27.1.0+2505117-mac.json"));
+        var world = new TestWorld();
+        const ulong address = 0x6000_0000;
+        var manager = world.Memory.Map(address, 0x640);
+        TestWorld.Set64(manager, 0, TestWorld.ModuleBase + 0x5678900u);
+        BitConverter.GetBytes(222000001).CopyTo(manager, 0x554);
+        var repo = new StaffRepository(world.Memory, profile, TestWorld.ModuleBase);
+        var writer = new StaffWriter(world.Memory, profile, TestWorld.ModuleBase);
+        writer.SetManagerUnlockables(repo.Reload(address)!, null, null, squadRegistrationAnytime: true);
+        Assert.Equal(0x100u, BitConverter.ToUInt32(manager, 0x3FC));
+        writer.SetManagerUnlockables(repo.Reload(address)!, null, null, squadNumbersAnytime: true);
+        Assert.Equal(0x300u, BitConverter.ToUInt32(manager, 0x3FC));
     }
 }
