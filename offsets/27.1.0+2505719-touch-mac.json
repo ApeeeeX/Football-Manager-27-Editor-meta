@@ -195,7 +195,9 @@
     "managerUnlockables": {
       "flags": "0x3FC",
       "allPlayersInterested": "0x1",
-      "becomeUnsackable": "0x2"
+      "becomeUnsackable": "0x2",
+      "squadRegistrationAnytime": "0x100",
+      "squadNumbersAnytime": "0x200"
     },
     "personDetails": {
       "personVtable": "0x57F67D0"

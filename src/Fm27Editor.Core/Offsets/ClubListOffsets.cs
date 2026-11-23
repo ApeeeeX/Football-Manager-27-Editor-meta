@@ -125,6 +125,10 @@ public sealed record ClubRelationshipOffsets(
     /// exactly Alex Ferguson at Man Utd and Guardiola, Kompany and David Silva at Man City, as the IGE shows).</summary>
     public int? NameStadium { get; init; }
 
+    /// <summary>Rival rows: bit 0x2 is "Clubs Don't Transfer Players". Steam macOS 27.1.0: +0xE, set on 72 of 9,609 rival rows,
+    /// Man Utd → Liverpool as the in-game editor shows, and per direction (AFC Wimbledon → MK Dons has no reverse flag).</summary>
+    public int? NoTransfers { get; init; }
+
     static readonly string[] Keys =
     [
         "vector", "recordSize", "target", "reason", "kind", "type", "value", "flags",
@@ -139,6 +143,8 @@ public sealed record ClubRelationshipOffsets(
         {
             NameStadium = e.TryGetProperty("nameStadium", out var ns) && ns.GetString() is { } nsText && nsText.StartsWith("0x")
                 ? Convert.ToInt32(nsText[2..], 16) : null,
+            NoTransfers = e.TryGetProperty("noTransfers", out var nt) && nt.GetString() is { } ntText && ntText.StartsWith("0x")
+                ? Convert.ToInt32(ntText[2..], 16) : null,
         };
     }
 
@@ -149,6 +155,7 @@ public sealed record ClubRelationshipOffsets(
         w.WriteStartObject("relationships");
         for (int i = 0; i < Keys.Length; i++) w.WriteString(Keys[i], $"0x{v[i]:X}");
         if (NameStadium is { } nameStadium) w.WriteString("nameStadium", $"0x{nameStadium:X}");
+        if (NoTransfers is { } noTransfers) w.WriteString("noTransfers", $"0x{noTransfers:X}");
         w.WriteEndObject();
     }
 }

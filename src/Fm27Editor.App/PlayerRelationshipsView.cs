@@ -1,8 +1,5 @@
 using System.Globalization;
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
-using Avalonia.Media;
 using Avalonia.Layout;
 using Fm27Editor.Core.Players;
 
@@ -15,84 +12,112 @@ public sealed partial class MainWindow
         public override string ToString() => Label;
     }
 
+    const byte PermanentFlag = 0x4F, CapsType = 0x68, YouthCapsType = 0x6B, OtherNationalityType = 0x09;
+    static readonly string[] PersonRelationGroups = ["Favorite People", "Disliked People", "Favorite Clubs", "Disliked Clubs", RelationshipSplitView.OtherGroup];
+
     static bool Matches(string? text, string query) => text is not null && Fold(text).Contains(Fold(query), StringComparison.Ordinal);
     static RelationshipKind KindFor(byte type) => type switch { 0x01 => RelationshipKind.LikesPerson, 0x02 => RelationshipKind.DislikesPerson, _ => RelationshipKind.LikesTeam };
+
+    static string RelationGroup(byte type) => type switch
+    {
+        0x01 => "Favorite People", 0x02 => "Disliked People", 0x03 => "Favorite Clubs", 0x04 => "Disliked Clubs", _ => RelationshipSplitView.OtherGroup,
+    };
+
+    static byte? RelationTypeOf(string group) => group switch
+    {
+        "Favorite People" => 0x01, "Disliked People" => 0x02, "Favorite Clubs" => 0x03, "Disliked Clubs" => 0x04, _ => null,
+    };
+
+    /// <summary>The list shows the target alone inside a named group; the Other group also needs the row's type.</summary>
+    static string RelationLabel(byte type, string? target)
+    {
+        string typeName = RelationCatalog.Find(type)?.Name is { } name ? Loc.S(name) : Loc.F("Unknown ({0})", type);
+        if (RelationGroup(type) != RelationshipSplitView.OtherGroup) return target ?? Loc.S("Choose…");
+        return string.IsNullOrEmpty(target) ? typeName : $"{typeName}: {target}";
+    }
 
     Control RelationshipsPanel(PlayerRecord player) => RelationshipsPanel(backend.Session.Owner(player), RenderEditor);
 
     /// <summary>
-    /// FMRTE's Relationships tab for a player or a staff member: every relation type in RelationCatalog, including the
-    /// Other Nation Caps / Youth Caps rows, whose +0xC byte is Caps and +0xD is Goals (Frida trace on Haaland, 10/11/2026;
-    /// Caps and Goals are clamped to 127 by FMRTE).
+    /// Relationships of a player or a staff member: every relation type in RelationCatalog, in the shared list-and-form layout.
+    /// Other Nation Caps / Youth Caps rows keep Caps at +0xC and Goals at +0xD (Frida trace on Haaland, 10/11/2026; FMRTE clamps both to 127).
     /// </summary>
     Control RelationshipsPanel(PersonOwner player, Action rerender)
     {
-        const byte CapsType = 0x68, YouthCapsType = 0x6B, OtherNationalityType = 0x09;
         var panel = new StackPanel { Spacing = 8 };
         var statuses = backend.Session.ReadStatuses(player);
         var edits = new List<EntryEdit>();
         var save = new Button { IsVisible = false, Content = Loc.S("Save changes"), IsEnabled = false, Classes = { "accent" } };
         var infoCodes = RelationshipWriter.OtherNationalityInfos;
-
         var removed = new List<RelationEntry>();
         var drafts = new List<DraftRow>();
+        var entryOf = new Dictionary<RelationshipRow, RelationEntry>();
+        var draftOf = new Dictionary<RelationshipRow, DraftRow>();
+        RelationshipSplitView? view = null;
+
         bool AnyChanged() => removed.Count > 0 || drafts.Count > 0 || edits.Any(e => !removed.Contains(e.Entry) && e.Changed());
         void Refresh() => save.IsEnabled = AnyChanged();
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("150,*,80,80,160,Auto"), ColumnSpacing = 8, RowSpacing = 4, Margin = new Thickness(12, 8) };
-        void Cell(Control c, int row, int col) { Grid.SetRow(c, row); Grid.SetColumn(c, col); grid.Children.Add(c); }
-        void HideRow(int at) { foreach (var c in grid.Children.Where(c => Grid.GetRow(c) == at)) c.IsVisible = false; }
-        grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-        string[] headers = ["Type", "Name", "Caps / Value", "Goals", "Info / Reason", ""];
-        for (int i = 0; i < headers.Length; i++) Cell(new TextBlock { Text = Loc.S(headers[i]), Foreground = Brush("#8A8DA3") }, 0, i);
-
-        foreach (var entry in statuses.Entries)
+        RelationshipRow EntryRow(RelationEntry entry)
         {
-            int row = grid.RowDefinitions.Count;
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var remove = new Button { Content = Loc.S("Remove") };
-            remove.Click += (_, _) => { removed.Add(entry); HideRow(row); Refresh(); };
-            Cell(new TextBlock { Text = RelationCatalog.Find(entry.Type)?.Name is { } relName ? Loc.S(relName) : Loc.F("Unknown ({0})", entry.Type), VerticalAlignment = VerticalAlignment.Center }, row, 0);
-            Cell(new TextBlock { Text = entry.TargetName ?? "", VerticalAlignment = VerticalAlignment.Center }, row, 1);
-
             var edit = new EntryEdit(entry);
+            var lines = new List<Control>();
+            RelationshipRow? row = null;
+            TextBox Editable(string text)
+            {
+                var box = RelationshipSplitView.Number(text);
+                box.TextChanged += (_, _) => Refresh();
+                return box;
+            }
             if (entry.Type is CapsType or YouthCapsType)
             {
-                var caps = new TextBox { Text = entry.Value.ToString(Inv), Width = 70, HorizontalContentAlignment = HorizontalAlignment.Right };
-                var goals = new TextBox { Text = entry.Flags.ToString(Inv), Width = 70, HorizontalContentAlignment = HorizontalAlignment.Right };
-                caps.TextChanged += (_, _) => Refresh();
-                goals.TextChanged += (_, _) => Refresh();
-                edit.Caps = caps; edit.Goals = goals;
-                Cell(caps, row, 2); Cell(goals, row, 3);
+                edit.Caps = Editable(entry.Value.ToString(Inv));
+                edit.Goals = Editable(entry.Flags.ToString(Inv));
+                lines.Add(RelationshipSplitView.FormRow("Caps", edit.Caps));
+                lines.Add(RelationshipSplitView.FormRow("Goals", edit.Goals));
             }
             else if (entry.Type == OtherNationalityType)
             {
                 var names = infoCodes.Select(c => InformationLabels.Name(InformationLabels.NationalityInfos, c)).ToList();
                 int at = infoCodes.ToList().IndexOf(entry.Flags);
                 if (at < 0) { names.Add(Loc.F("Code {0}", entry.Flags)); at = names.Count - 1; }
-                var info = new ComboBox { Width = 150, ItemsSource = names, SelectedIndex = at };
-                info.SelectionChanged += (_, _) => Refresh();
-                edit.Info = info;
-                Cell(info, row, 4);
+                edit.Info = RelationshipSplitView.Choice(names, at);
+                edit.Info.SelectionChanged += (_, _) => Refresh();
+                lines.Add(RelationshipSplitView.FormRow("Info", edit.Info));
             }
             else if (RelationCatalog.HasLikeValue(entry.Type))
             {
-                var value = new TextBox { Text = entry.Value.ToString(Inv), Width = 70, HorizontalContentAlignment = HorizontalAlignment.Right };
-                value.TextChanged += (_, _) => Refresh();
-                var reasons = RelationshipLabels.Reasons(KindFor(entry.Type)).ToList();
-                int at = entry.Plus8;
-                if (at >= reasons.Count) reasons.AddRange(Enumerable.Range(reasons.Count, at - reasons.Count + 1).Select(c => Loc.F("Code {0}", c)));
-                var reason = new ComboBox { Width = 150, ItemsSource = reasons, SelectedIndex = Math.Clamp(at, 0, reasons.Count - 1) };
-                reason.SelectionChanged += (_, _) => Refresh();
-                edit.Caps = value; edit.Reason = reason;
-                Cell(value, row, 2); Cell(reason, row, 4);
+                edit.Caps = Editable(entry.Value.ToString(Inv));
+                lines.Add(RelationshipSplitView.FormRow("Value", edit.Caps));
+                if (RelationCatalog.HasReason(entry.Type))
+                {
+                    var reasons = RelationshipLabels.Reasons(KindFor(entry.Type)).Select(r => Loc.S(r)).ToList();
+                    int at = entry.Plus8;
+                    if (at >= reasons.Count) reasons.AddRange(Enumerable.Range(reasons.Count, at - reasons.Count + 1).Select(c => Loc.F("Code {0}", c)));
+                    edit.Reason = RelationshipSplitView.Choice(reasons, Math.Clamp(at, 0, reasons.Count - 1));
+                    edit.Reason.SelectionChanged += (_, _) => Refresh();
+                    lines.Add(RelationshipSplitView.FormRow("Reason", edit.Reason));
+                }
+                if (RelationCatalog.HasPermanent(entry.Type))
+                {
+                    edit.Permanent = new CheckBox { IsChecked = entry.Flags == PermanentFlag };
+                    edit.Permanent.IsCheckedChanged += (_, _) => Refresh();
+                    lines.Add(RelationshipSplitView.FormRow("Permanent", edit.Permanent));
+                }
             }
-            else
+            else lines.Add(RelationshipSplitView.FormRow("Value", new TextBlock { Text = entry.Value.ToString(Inv) }));
+
+            row = new RelationshipRow
             {
-                Cell(new TextBlock { Text = entry.Value.ToString(Inv), Width = 70, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center }, row, 2);
-            }
-            Cell(remove, row, 5);
+                Group = RelationGroup(entry.Type),
+                Name = RelationLabel(entry.Type, entry.TargetName ?? (entry.Target == 0 ? null : Loc.S("Unknown"))),
+                Value = entry.Value.ToString(Inv),
+                Detail = RelationshipSplitView.Form([.. lines]),
+            };
+            if (edit.Caps is { } valueBox) valueBox.TextChanged += (_, _) => { row.Value = valueBox.Text ?? ""; view?.Refresh(); };
             edits.Add(edit);
+            entryOf[row] = entry;
+            return row;
         }
 
         // What a new row can point at, by the kind its type needs; built the first time a draft asks.
@@ -113,62 +138,94 @@ public sealed partial class MainWindow
             return choices[kind] = found.ToList();
         }
 
-        // Add puts a draft row in the table; the type decides which of its cells show. Nothing is written until Save.
-        void AddDraft()
+        // Add puts a draft row in the list; the type decides which lines of its form show. Nothing is written until Save.
+        RelationshipRow DraftRelationRow(string group)
         {
-            int row = grid.RowDefinitions.Count;
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             var d = new DraftRow();
-            var typeBox = new ComboBox
+            var typeBox = RelationshipSplitView.Choice(RelationCatalog.All.Select(t => Loc.S(t.Name)), -1);
+            typeBox.PlaceholderText = Loc.S("Select type…");
+            var targetButton = new Button { Width = 240, HorizontalContentAlignment = HorizontalAlignment.Left, Content = Loc.S("Choose…") };
+            d.Value = RelationshipSplitView.Number("");
+            d.Goals = RelationshipSplitView.Number("0");
+            d.Info = RelationshipSplitView.Choice(infoCodes.Select(c => InformationLabels.Name(InformationLabels.NationalityInfos, c)), infoCodes.ToList().IndexOf(80));
+            d.Reason = RelationshipSplitView.Choice(null, -1);
+            d.Permanent = new CheckBox();
+            Grid targetLine = RelationshipSplitView.FormRow("Name", targetButton), valueLine = RelationshipSplitView.FormRow("Value", d.Value),
+                goalsLine = RelationshipSplitView.FormRow("Goals", d.Goals), infoLine = RelationshipSplitView.FormRow("Info", d.Info),
+                reasonLine = RelationshipSplitView.FormRow("Reason", d.Reason), permanentLine = RelationshipSplitView.FormRow("Permanent", d.Permanent);
+            foreach (var line in new[] { targetLine, valueLine, goalsLine, infoLine, reasonLine, permanentLine }) line.IsVisible = false;
+            var row = new RelationshipRow
             {
-                Width = 150,
-                ItemsSource = RelationCatalog.All.Select(t => Loc.S(t.Name)).ToArray(),
-                SelectedIndex = -1,
-                MaxDropDownHeight = 300,
+                Group = group,
+                Name = Loc.S("Select type…"),
+                Value = "",
+                Detail = RelationshipSplitView.Form(RelationshipSplitView.FormRow("Type", typeBox), targetLine, valueLine, goalsLine, infoLine, reasonLine, permanentLine),
             };
-            var target = new AutoCompleteBox { MinimumPrefixLength = 2, FilterMode = AutoCompleteFilterMode.Custom, MaxDropDownHeight = 300, IsVisible = false,
-                ItemFilter = (q, o) => o is RelationTarget t && Matches(t.Label, q ?? "") };
-            var value = new TextBox { Width = 70, HorizontalContentAlignment = HorizontalAlignment.Right, IsVisible = false };
-            var goals = new TextBox { Width = 70, HorizontalContentAlignment = HorizontalAlignment.Right, IsVisible = false };
-            var info = new ComboBox { Width = 150, ItemsSource = infoCodes.Select(c => InformationLabels.Name(InformationLabels.NationalityInfos, c)).ToArray(), SelectedIndex = infoCodes.ToList().IndexOf(80), IsVisible = false };
-            var removeDraft = new Button { Content = Loc.S("Remove") };
-            d.TargetBox = target; d.Value = value; d.Goals = goals; d.Info = info;
-            Cell(typeBox, row, 0); Cell(target, row, 1); Cell(value, row, 2); Cell(goals, row, 3); Cell(info, row, 4); Cell(removeDraft, row, 5);
+            void Relabel()
+            {
+                row.Name = d.Type is { } t ? RelationLabel(t.Code, d.Target?.Label ?? (t.Target == RelationTargetKind.None ? null : Loc.S("Choose…"))) : Loc.S("Select type…");
+                row.Value = d.Value!.Text ?? "";
+                view?.Refresh();
+            }
             typeBox.SelectionChanged += (_, _) =>
             {
                 d.Type = typeBox.SelectedIndex < 0 ? null : RelationCatalog.All[typeBox.SelectedIndex];
-                bool targeted = d.Type is { Target: not RelationTargetKind.None };
-                target.IsVisible = targeted;
-                target.Text = ""; target.SelectedItem = null;
-                target.ItemsSource = targeted ? TargetChoices(d.Type!.Target) : null;
-                value.IsVisible = d.Type is not null && d.Type.Code != OtherNationalityType;
-                goals.IsVisible = d.Type?.Code is CapsType or YouthCapsType;
-                info.IsVisible = d.Type?.Code == OtherNationalityType;
-                value.Text = d.Type?.Value.ToString(Inv) ?? ""; goals.Text = "0";
+                d.Target = null;
+                targetButton.Content = Loc.S("Choose…");
+                targetLine.IsVisible = d.Type is { Target: not RelationTargetKind.None };
+                valueLine.IsVisible = d.Type is not null && d.Type.Code != OtherNationalityType;
+                goalsLine.IsVisible = d.Type?.Code is CapsType or YouthCapsType;
+                infoLine.IsVisible = d.Type?.Code == OtherNationalityType;
+                bool hasReason = d.Type is { } picked && RelationCatalog.HasReason(picked.Code);
+                d.Reason.ItemsSource = hasReason ? RelationshipLabels.Reasons(KindFor(d.Type!.Code)).Select(r => Loc.S(r)).ToArray() : null;
+                d.Reason.SelectedIndex = hasReason ? 0 : -1;
+                reasonLine.IsVisible = hasReason;
+                permanentLine.IsVisible = d.Type is { } withFlag && RelationCatalog.HasPermanent(withFlag.Code);
+                d.Permanent.IsChecked = d.Type?.Flags == PermanentFlag;
+                d.Value.Text = d.Type?.Value.ToString(Inv) ?? "";
+                d.Goals.Text = "0";
+                if (d.Type is { } type) row.Group = RelationGroup(type.Code);
+                Relabel();
+                if (view is not null) view.Select(row);
                 Refresh();
             };
-            removeDraft.Click += (_, _) => { drafts.Remove(d); HideRow(row); Refresh(); };
+            d.Value.TextChanged += (_, _) => Relabel();
+            targetButton.Click += async (_, _) =>
+            {
+                if (d.Type is not { Target: not RelationTargetKind.None } type) return;
+                var options = TargetChoices(type.Target);
+                var chosen = await PickerDialog.Show<RelationTarget>(this, Loc.S(type.Name),
+                    q => options.Where(t => Matches(t.Label, q)).Take(200).Select(t => (t.Label, t)).ToList());
+                if (chosen is null) return;
+                d.Target = chosen;
+                targetButton.Content = chosen.Label;
+                ToolTip.SetTip(targetButton, chosen.Label);
+                Relabel();
+            };
+            // The group the user is on already says the type; the Other group leaves it to them.
+            if (RelationTypeOf(group) is { } implied) typeBox.SelectedIndex = RelationCatalog.All.ToList().FindIndex(t => t.Code == implied);
             drafts.Add(d);
+            draftOf[row] = d;
             Refresh();
+            return row;
         }
-        var add = new Button { Content = Loc.S("Add"), HorizontalAlignment = HorizontalAlignment.Left };
-        add.Click += (_, _) => AddDraft();
 
-        var list = new StackPanel();
-        list.Children.Add(new ScrollViewer { Content = grid, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
-        list.Children.Add(new Border
+        if (statuses.Holder != 0)
         {
-            BorderBrush = UiKit.BorderSubtle,
-            BorderThickness = new Thickness(0, statuses.Entries.Count > 0 ? 1 : 0, 0, 0),
-            Padding = new Thickness(12, 8),
-            Child = add,
-        });
-        if (statuses.Holder != 0) panel.Children.Add(UiKit.Card("Relationships", list));
+            view = new RelationshipSplitView(PersonRelationGroups, statuses.Entries.Select(EntryRow).ToList(), row =>
+            {
+                if (draftOf.Remove(row, out var draft)) drafts.Remove(draft);
+                else if (entryOf.TryGetValue(row, out var entry)) removed.Add(entry);
+                Refresh();
+            }, DraftRelationRow);
+            panel.Children.Add(view.View);
+        }
+
         RelationDraft ToDraft(DraftRow d)
         {
             var type = d.Type ?? throw new InvalidOperationException(Loc.S("Relationships: choose a type for every new row"));
             ulong target = type.Target == RelationTargetKind.None ? 0
-                : (d.TargetBox!.SelectedItem as RelationTarget)?.Address ?? throw new InvalidOperationException(Loc.F("{0}: choose a target", Loc.S(type.Name)));
+                : d.Target?.Address ?? throw new InvalidOperationException(Loc.F("{0}: choose a target", Loc.S(type.Name)));
             byte value = type.Value, flags = type.Flags;
             if (type.Code is CapsType or YouthCapsType)
             {
@@ -177,7 +234,9 @@ public sealed partial class MainWindow
             }
             else if (type.Code == OtherNationalityType) flags = (byte)infoCodes[d.Info!.SelectedIndex];
             else if (!byte.TryParse(d.Value!.Text, out value)) throw new InvalidOperationException(Loc.F("{0}: enter a value", Loc.S(type.Name)));
-            return new RelationDraft(type, target, type.Plus8, value, flags);
+            if (RelationCatalog.HasPermanent(type.Code)) flags = d.Permanent!.IsChecked == true ? PermanentFlag : (byte)0;
+            int plus8 = RelationCatalog.HasReason(type.Code) ? Math.Max(d.Reason!.SelectedIndex, 0) : type.Plus8;
+            return new RelationDraft(type, target, plus8, value, flags);
         }
         save.Click += (_, _) =>
         {
@@ -205,7 +264,9 @@ public sealed partial class MainWindow
                         {
                             if (!byte.TryParse(e.Caps!.Text, out var value) || value is < 1 or > 100)
                                 throw new InvalidOperationException(Loc.S("Relationships: enter a value 1–100"));
-                            writer.UpdateEntry(player, entry, e.Reason!.SelectedIndex, value, entry.Flags);
+                            // An untouched box keeps the game's byte (0x4E exists); only a real change writes 0x4F / 0.
+                            byte flags = e.PermanentChanged() ? (e.Permanent!.IsChecked == true ? PermanentFlag : (byte)0) : entry.Flags;
+                            writer.UpdateEntry(player, entry, e.Reason?.SelectedIndex ?? entry.Plus8, value, flags);
                         }
                     }
                     // Removing and adding move the list, so it is read again before each one.
@@ -226,13 +287,14 @@ public sealed partial class MainWindow
         return panel;
     }
 
-    /// <summary>A row added with Add and not yet saved; its controls sit in the table like any other row.</summary>
+    /// <summary>A row added with Add and not yet saved; its controls live in the row's form.</summary>
     sealed class DraftRow
     {
         public RelationType? Type;
-        public AutoCompleteBox? TargetBox;
+        public RelationTarget? Target;
         public TextBox? Value, Goals;
-        public ComboBox? Info;
+        public ComboBox? Info, Reason;
+        public CheckBox? Permanent;
     }
 
     sealed class EntryEdit(RelationEntry entry)
@@ -242,14 +304,16 @@ public sealed partial class MainWindow
         public TextBox? Goals { get; set; }
         public ComboBox? Info { get; set; }
         public ComboBox? Reason { get; set; }
+        public CheckBox? Permanent { get; set; }
+        public bool PermanentChanged() => Permanent is not null && (Permanent.IsChecked == true) != (Entry.Flags == PermanentFlag);
         public bool Changed()
         {
             if (Entry.Type is 0x68 or 0x6B)
                 return Caps is not null && (Caps.Text != Entry.Value.ToString(CultureInfo.InvariantCulture) || Goals?.Text != Entry.Flags.ToString(CultureInfo.InvariantCulture));
             if (Entry.Type == 0x09)
                 return Info?.SelectedIndex is { } i && (byte)RelationshipWriter.OtherNationalityInfos[i] != Entry.Flags;
-            if (Caps is null) return false;   // read-only row (no editable control on the grid)
-            return Caps.Text != Entry.Value.ToString(CultureInfo.InvariantCulture) || (Reason is not null && Reason.SelectedIndex != Entry.Plus8);
+            if (Caps is null) return false;   // read-only row (no editable control)
+            return Caps.Text != Entry.Value.ToString(CultureInfo.InvariantCulture) || (Reason is not null && Reason.SelectedIndex != Entry.Plus8) || PermanentChanged();
         }
     }
 }

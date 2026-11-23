@@ -74,9 +74,9 @@ internal static class ToolGrid
     }
 
     /// <summary>A right-aligned number column.</summary>
-    public static DataGridTemplateColumn Number<T>(string title, Func<T, string> text, double width, string tooltip) => new()
+    public static DataGridTemplateColumn Number<T>(string title, Func<T, string> text, double width, string tooltip, double rightInset = 5) => new()
     {
-        Header = Header(title, tooltip, HorizontalAlignment.Right),
+        Header = WithRightInset(Header(title, tooltip, HorizontalAlignment.Right), rightInset),
         Width = new DataGridLength(width),
         CellTemplate = new FuncDataTemplate<T>((row, _) => new TextBlock
         {
@@ -85,9 +85,17 @@ internal static class ToolGrid
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right,
             TextAlignment = TextAlignment.Right,
-            Margin = new Thickness(0, 0, 5, 0),
+            Margin = new Thickness(0, 0, rightInset, 0),
         }),
     };
+
+    /// <summary>Keeps a number header over its values when the column reserves room at its right edge.</summary>
+    static Control WithRightInset(Control header, double inset)
+    {
+        // The header cell already sits 5 px further in than a value with the default inset.
+        if (inset != 5) header.Margin = new Thickness(0, 4, inset - 5, 4);
+        return header;
+    }
 
     /// <summary>A left-aligned text column; <paramref name="width"/> &lt;= 0 makes it a star column.</summary>
     public static DataGridTemplateColumn Text<T>(string title, Func<T, string> text, double width, string tooltip, string foreground = "#CBD5E1", bool bold = false, double minWidth = 0) => new()

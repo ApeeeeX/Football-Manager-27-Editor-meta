@@ -533,7 +533,9 @@
       "dislikesPersonType": "0x2",
       "clubKind": "0x1",
       "personKind": "0x3",
-      "teamKind": "0x4"
+      "teamKind": "0x4",
+      "nameStadium": "0xE",
+      "noTransfers": "0xE"
     },
     "financeLists": {
       "sponsorsPointer": "0x130",

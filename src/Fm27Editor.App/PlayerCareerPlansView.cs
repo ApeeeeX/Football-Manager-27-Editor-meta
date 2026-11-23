@@ -138,7 +138,8 @@ public sealed partial class MainWindow
             rowsOf.Add((plan, editor));
         }
 
-        var add = new Button { Content = Loc.S("Add"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(12, 0, 12, 8) };
+        // In the card header so it stays in view however long the list is.
+        var add = new Button { Content = Loc.S("Add"), VerticalAlignment = VerticalAlignment.Center };
         add.Click += (_, _) =>
         {
             var editor = PlanRow(grid, 1, 1, null, 1, catalogue, Refresh);
@@ -149,8 +150,7 @@ public sealed partial class MainWindow
             Refresh();
         };
 
-        var list = new StackPanel { Children = { grid, add } };
-        panel.Children.Add(UiKit.Card("Career Plans", list));
+        panel.Children.Add(UiKit.Card("Career Plans", grid, rightHeader: add));
         save.Click += (_, _) =>
         {
             var changes = rowsOf.Where(Changed).ToList();

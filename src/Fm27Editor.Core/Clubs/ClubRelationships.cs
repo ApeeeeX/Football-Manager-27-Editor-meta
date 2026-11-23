@@ -14,7 +14,11 @@ public enum ClubRelationshipKind { Rival, LikesPerson, DislikesPerson, Other }
 /// <see cref="Snapshot"/> is the whole 16-byte record as read, the guard for writes.
 /// </summary>
 public sealed record ClubRelationship(ulong Address, ClubRelationshipKind Kind, int TypeCode, string? Name, int Value,
-    int Reason, bool Permanent, string Snapshot, ulong Begin, ulong End, ulong Capacity, ulong Target = 0, ulong TargetClub = 0, bool? CanNameStadium = null);
+    int Reason, bool Permanent, string Snapshot, ulong Begin, ulong End, ulong Capacity, ulong Target = 0, ulong TargetClub = 0, bool? CanNameStadium = null)
+{
+    /// <summary>Rival rows on builds with the offset: "Clubs Don't Transfer Players"; null elsewhere.</summary>
+    public bool? NoTransfers { get; init; }
+}
 
 /// <summary>Read-only snapshot of the vector stored inline in the club object (club + Vector).</summary>
 public sealed class ClubRelationshipReader(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
@@ -44,7 +48,10 @@ public sealed class ClubRelationshipReader(IProcessMemory memory, OffsetProfile 
             rows.Add(new(begin + (ulong)i, kind, type, TargetName(target, targetKind), bytes[i + o.Value],
                 bytes[i + o.Reason], bytes[i + o.Flags] == PermanentFlag, Convert.ToHexString(bytes, i, o.RecordSize), begin, end, cap,
                 target, TargetClubAddress(target, targetKind),
-                kind == ClubRelationshipKind.LikesPerson && o.NameStadium is { } ns ? bytes[i + ns] != 0 : null));
+                kind == ClubRelationshipKind.LikesPerson && o.NameStadium is { } ns ? bytes[i + ns] != 0 : null)
+            {
+                NoTransfers = kind == ClubRelationshipKind.Rival && o.NoTransfers is { } nt ? (bytes[i + nt] & ClubRelationshipWriter.NoTransfersBit) != 0 : null,
+            });
         }
         return rows.AsReadOnly();
     }
@@ -106,14 +113,17 @@ public sealed class ClubRelationshipReader(IProcessMemory memory, OffsetProfile 
 public sealed class ClubRelationshipWriter(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
 {
     const byte PermanentFlag = 0x4F;
+    internal const byte NoTransfersBit = 0x2;
 
     public static int ReasonCount(ClubRelationshipKind kind) => kind == ClubRelationshipKind.Rival ? 4 : 9;
 
     public void SetValue(ulong club, ClubRelationship row, int value) => SetDetails(club, row, null, null, value);
 
     /// <summary>Reason is the low byte of the int16 at +Reason (as FMRTE 27 wrote it); Permanent is +Flags 0x4F / 0x00.</summary>
-    public void SetDetails(ulong club, ClubRelationship row, int? reason, bool? permanent, int? value, bool? canNameStadium = null)
+    public void SetDetails(ulong club, ClubRelationship row, int? reason, bool? permanent, int? value, bool? canNameStadium = null, bool? noTransfers = null)
     {
+        if (noTransfers is not null && (row.Kind != ClubRelationshipKind.Rival || profile.Club?.Relationships?.NoTransfers is null))
+            throw new ArgumentException("Only rival rows can block transfers, on builds where the flag is measured", nameof(noTransfers));
         if (row.Kind == ClubRelationshipKind.Other) throw new ArgumentException("Only Rival, Likes Person and Dislikes Person rows are editable", nameof(row));
         if (value is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(value), "Relationship value is 1–100");
         if (reason is { } r && (r < 0 || r >= ReasonCount(row.Kind))) throw new ArgumentOutOfRangeException(nameof(reason));
@@ -128,6 +138,11 @@ public sealed class ClubRelationshipWriter(IProcessMemory memory, OffsetProfile 
         if (value is { } v) after[o.Value] = (byte)v;
         if (permanent is { } p) after[o.Flags] = p ? PermanentFlag : (byte)0;
         if (canNameStadium is { } named) after[o.NameStadium!.Value] = named ? (byte)1 : (byte)0;
+        if (noTransfers is { } blocked)
+        {
+            int at = o.NoTransfers!.Value;
+            after[at] = (byte)(blocked ? after[at] | NoTransfersBit : after[at] & ~NoTransfersBit);
+        }
         if (!memory.TryWrite(row.Address, after) || !memory.Read(row.Address, after.Length).AsSpan().SequenceEqual(after))
             throw new MemoryAccessException($"Could not write {after.Length} bytes at 0x{row.Address:X}");
     }

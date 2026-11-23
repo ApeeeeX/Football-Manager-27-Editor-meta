@@ -34,10 +34,11 @@ public class ClubRelationshipLabelsTests
     public void Reason_names_follow_FMRTE_dropdowns()
     {
         Assert.Equal(["No Reason", "Local", "Competitive", "Historic"], ClubRelationshipLabels.Reasons(ClubRelationshipKind.Rival));
-        Assert.Equal(["No Reason", "Player", "Manager", "Backroom Staff", "Chairperson", "Player And Manager", "Owner", "Club Staff", "Founder"],
+        // The in-game editor's Favorite People dropdown (Man Utd, 23/11/2026), plus No Reason and Founder from game rows.
+        Assert.Equal(["No Reason", "Player", "Head Coach", "Coaching Staff", "Chairperson", "Player And Head Coach", "Owner", "Club Staff", "Founder"],
             ClubRelationshipLabels.Reasons(ClubRelationshipKind.LikesPerson));
         Assert.Equal("Historic", ClubRelationshipLabels.ReasonName(ClubRelationshipKind.Rival, 3));
-        Assert.Equal("Manager", ClubRelationshipLabels.ReasonName(ClubRelationshipKind.LikesPerson, 2));
+        Assert.Equal("Head Coach", ClubRelationshipLabels.ReasonName(ClubRelationshipKind.LikesPerson, 2)); // Alex Ferguson
         Assert.Equal("Founder", ClubRelationshipLabels.ReasonName(ClubRelationshipKind.LikesPerson, 8));
         Assert.Equal("77", ClubRelationshipLabels.ReasonName(ClubRelationshipKind.LikesPerson, 77));
         // The writer accepts exactly the codes the dropdown offers.

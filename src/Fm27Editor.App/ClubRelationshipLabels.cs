@@ -4,16 +4,16 @@ using Fm27Editor.Core.Clubs;
 namespace Fm27Editor.App;
 
 /// <summary>
-/// FMRTE 27's Club → Relationships names. Rival reasons were read from FMRTE's dropdown (No Reason, Local, Competitive,
-/// Historic) and confirmed in RAM for 1, 2 and 3; person reasons are FMRTE's dropdown order, confirmed in RAM for 0, 1, 2, 4
-/// and 8 (3, 5, 6, 7 follow the same order).
+/// Club → Relationships names as the game's in-game editor shows them (Man Utd, 23/11/2026). Rival codes 1, 2, 3 and person
+/// codes 0, 1, 2, 4, 8 are confirmed in RAM (Alex Ferguson is 2, Head Coach); 3, 5, 6, 7 follow the dropdown's order.
+/// Founder (8) is not in the in-game dropdown but exists in game rows.
 /// </summary>
 public static class ClubRelationshipLabels
 {
     static readonly string[] RivalReasons = ["No Reason", "Local", "Competitive", "Historic"];
 
     static readonly string[] PersonReasons =
-        ["No Reason", "Player", "Manager", "Backroom Staff", "Chairperson", "Player And Manager", "Owner", "Club Staff", "Founder"];
+        ["No Reason", "Player", "Head Coach", "Coaching Staff", "Chairperson", "Player And Head Coach", "Owner", "Club Staff", "Founder"];
 
     public static IReadOnlyList<string> Reasons(ClubRelationshipKind kind) => kind == ClubRelationshipKind.Rival ? RivalReasons : PersonReasons;
 

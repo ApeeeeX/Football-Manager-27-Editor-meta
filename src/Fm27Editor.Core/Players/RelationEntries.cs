@@ -53,6 +53,12 @@ public static class RelationCatalog
     /// <summary>Types that point at a person or at a team of a club use the 1–100 range of FMRTE's Value box.</summary>
     public static bool HasLikeValue(int code) => code is 0x01 or 0x02 or 0x03 or 0x04;
 
+    /// <summary>Only liked rows have a Reason; the game's editor shows disliked rows with Level and Permanent alone.</summary>
+    public static bool HasReason(int code) => code is 0x01 or 0x03;
+
+    /// <summary>Rows with a Permanent box (+0xD is 0x4F when ticked). Liked clubs have none in the game's editor.</summary>
+    public static bool HasPermanent(int code) => code is 0x01 or 0x02 or 0x04;
+
     /// <summary>Other Nation Caps / Youth Caps: +0xC is Caps, +0xD is Goals, both 0–127 (FMRTE clamped 300 to 127).</summary>
     public static bool HasCapsAndGoals(int code) => code is 0x68 or 0x6B;
 
