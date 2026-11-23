@@ -38,7 +38,7 @@ using Fm27Editor.Core.Presets;
 
 namespace Fm27Editor.Core.Memory;
 
-public sealed class MacHelperProcessMemory : IMacMemory, IMemoryRegions, IRemoteAllocator, IGameHeapAllocator, IMemoryWriteObserver, IMemoryAllocationObserver, IGameHeapVerifier, IWriteGate, ICodePatchHost, IScatterReadMemory, IDisposable
+public sealed class MacHelperProcessMemory : IUnreadablePagesAreNotHeap, IMacMemory, IMemoryRegions, IRemoteAllocator, IGameHeapAllocator, IMemoryWriteObserver, IMemoryAllocationObserver, IGameHeapVerifier, IWriteGate, ICodePatchHost, IScatterReadMemory, IDisposable
 {
     private const string SocketPath = "/var/run/fm27editor.sock";
 

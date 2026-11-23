@@ -10,6 +10,17 @@ public sealed class TransferDealScanTests
     const int Chunk = 1 << 22;
     static OffsetProfile Profile(string build) => OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", build + ".json"));
 
+    sealed class MacRegions : Regions, IUnreadablePagesAreNotHeap;
+
+    [Fact]
+    public void Mac_scan_skips_an_unreadable_page_and_keeps_later_objects()
+    {
+        var memory = new MacRegions { RejectWide = true, RejectPage = true };
+        BitConverter.GetBytes(0x11111UL).CopyTo(memory.Bytes, 0);
+        BitConverter.GetBytes(0x11111UL).CopyTo(memory.Bytes, 8192);
+        Assert.Equal([Start, Start + 8192], HeapVtableScanner.Scan(memory, 0x11111).Select(m => m.Address));
+    }
+
     class Regions : IProcessMemory, IMemoryRegions
     {
         public byte[] Bytes = new byte[Chunk + 19];

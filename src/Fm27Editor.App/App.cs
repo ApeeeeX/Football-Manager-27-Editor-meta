@@ -69,6 +69,12 @@ public sealed class App : Application
             .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "dev");
         AppDomain.CurrentDomain.UnhandledException += (_, e) => recorder?.Log("crash", e.ExceptionObject.ToString() ?? "unhandled exception");
         TaskScheduler.UnobservedTaskException += (_, e) => recorder?.Log("error", "unobserved task exception: " + e.Exception.GetBaseException());
+        Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, e) =>
+        {
+            recorder?.Log("crash", "UI handler: " + e.Exception);
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: MainWindow window }) window.ShowUiError(e.Exception);
+            e.Handled = true;
+        };
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.MainWindow = new MainWindow();
         base.OnFrameworkInitializationCompleted();

@@ -69,6 +69,12 @@ public static class HeapVtableScanner
                         if (!memory.TryRead(region.Start + offset + (ulong)page, bytes))
                         {
                             if (tolerateUnreadable) continue;
+                            if (memory is IUnreadablePagesAreNotHeap)
+                            {
+                                // One VM entry is mapped one way: unreadable from its first page means device memory, so skip it.
+                                if (offset == 0 && page == 0) return found;
+                                continue;
+                            }
                             throw new MemoryAccessException($"Heap index is incomplete: writable range 0x{region.Start + offset + (ulong)page:X} ({size} bytes) could not be read");
                         }
                         Match(region.Start + offset + (ulong)page, bytes, found);

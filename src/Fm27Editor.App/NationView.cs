@@ -544,7 +544,14 @@ internal sealed class NationScreen(IScreenHost host)
         var allNations = rowNations.Length > 0 ? rowNations : Host.NationCatalogue.ToArray();
         var nationOptions = allNations.Select(x => new AgreementTargetOption(x.Address, x.DisplayName)).OrderBy(x => x.Name).ToArray();
         var continentOptions = continents.Select(x => new AgreementTargetOption(x.Address, x.Name)).ToArray();
-        var regionOptions = session.NationAgreements.Regions().Select(x => new AgreementTargetOption(x.Address, x.Name)).ToArray();
+        AgreementTargetOption[] regionOptions;
+        try { regionOptions = session.NationAgreements.Regions().Select(x => new AgreementTargetOption(x.Address, x.Name)).ToArray(); }
+        catch (InvalidOperationException ex)
+        {
+            // Without the region index a row cannot be named or saved safely; the rest of the nation stays usable.
+            panel.Children.Add(Label(UserMessage.For(ex)));
+            return panel;
+        }
         agreementOrganisations ??= Host.Backend.Data?.AgreementOrganisations;
         if (agreementOrganisations is null)
         {

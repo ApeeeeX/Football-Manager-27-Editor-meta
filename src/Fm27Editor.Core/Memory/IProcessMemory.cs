@@ -105,6 +105,12 @@ public static class ProcessMemoryExtensions
 
 public sealed class MemoryAccessException(string message) : Exception(message);
 
+/// <summary>
+/// Memory whose writable regions include mappings that are never object storage and cannot be read. On macOS these are the
+/// IOSurface and IOAccelerator buffers of the game's window (seen 23/11/2026, Steam 27.1.0: a CAMetalLayer drawable).
+/// </summary>
+public interface IUnreadablePagesAreNotHeap;
+
 public readonly record struct MemoryRegion(ulong Start, ulong Size, bool IsModuleData)
 {
     /// <summary>OS guard pages are reserved access traps, not readable object storage.</summary>

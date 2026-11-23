@@ -67,6 +67,7 @@ public sealed partial class MainWindow : IScreenHost
         if (backend.Session.Stadiums.Reload(address) is { } stadium) { openLinkedEntityInNewTab = true; stadiumScreen.Pick(stadium); } else status.Text = Loc.S("Stadium unavailable");
     }
     Avalonia.Controls.Window IScreenHost.Window => this;
+    internal void ShowUiError(Exception error) => status.Text = UserMessage.For(error);
     void IScreenHost.OpenStaff(Fm27Editor.Core.Staff.StaffRecord staff) { openLinkedEntityInNewTab = true; OpenClubStaff(staff); }
     IReadOnlyList<Fm27Editor.Core.Players.PlayerRecord> IScreenHost.Players() => Players();
     IReadOnlyList<Fm27Editor.Core.Clubs.ClubEntry> IScreenHost.Clubs() => clubCache ??= backend.Session.LoadClubs(Players());

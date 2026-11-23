@@ -460,7 +460,17 @@ internal abstract class EntityScreen<TRecord, TRow, TDraft> : IEntityScreen
             if (HasRail) SectionHost.MarkDirty(Kind, initiallyDirty && SectionHost.Selected(Kind) is { } openKey ? [openKey] : []);
         }
         save.Click += (_, _) => Save(record, draft);
-        BuildEditor(record, draft, Changed);
+        try { BuildEditor(record, draft, Changed); }
+        catch (Exception ex)
+        {
+            // One unreadable section must not take the app down or stop the tab from opening.
+            string message = UserMessage.For(ex);
+            HeaderHost.Content = null;
+            Editor.Children.Clear();
+            SaveButton = null;
+            Editor.Children.Add(Label(message));
+            Host.SetStatus(message);
+        }
     }
 
     /// <summary>Draws the open item again (after something outside the screen changed it).</summary>
