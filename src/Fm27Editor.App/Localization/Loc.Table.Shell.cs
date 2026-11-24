@@ -276,6 +276,15 @@ public static partial class Loc
         m["The update could not be installed ({0}). This version is unchanged. You can download {1} from GitHub instead."] =
             "Không thể cài bản cập nhật ({0}). Phiên bản hiện tại giữ nguyên. Bạn có thể tải {1} từ GitHub.";
         m["Open GitHub"] = "Mở GitHub";
+        m["Version {0} is out. This copy cannot replace itself, so Update now opens the download page for it."] = "Đã có phiên bản {0}. Bản này không tự thay thế được, nên Cập nhật ngay sẽ mở trang tải phiên bản đó.";
+        m["The update could not be installed ({0}). This version is unchanged. You can download {1} yourself instead."] = "Không cài được bản cập nhật ({0}). Phiên bản hiện tại vẫn giữ nguyên. Bạn có thể tự tải {1}.";
+        m["Download manually"] = "Tải thủ công";
+        m["Updating to {0}"] = "Đang cập nhật lên {0}";
+        m["Downloading {0}… {1:0.0} / {2:0.0} MB"] = "Đang tải {0}… {1:0.0} / {2:0.0} MB";
+        m["Downloading {0}… {1:0.0} MB"] = "Đang tải {0}… {1:0.0} MB";
+        m["Installing the new version…"] = "Đang cài phiên bản mới…";
+        m["Opening the new version…"] = "Đang mở phiên bản mới…";
+        m["Update cancelled. This version is unchanged."] = "Đã huỷ cập nhật. Phiên bản hiện tại vẫn giữ nguyên.";
         m["Version {0} is out on GitHub. Download the latest release from the release page."] =
             "Phiên bản {0} đã có trên GitHub. Hãy tải bản mới nhất từ trang phát hành.";
         m["Could not open the browser: {0}"] = "Không thể mở trình duyệt: {0}";

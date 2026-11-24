@@ -9,6 +9,7 @@
 - **Players and managers:** Legend Players, in-match ability editing, and manager unlockables including squad registration and squad numbers anytime.
 - **Faster and steadier:** a reworked load path with lower memory use, and fixes for random Save As and holiday crashes after adding to full game lists.
 - **Interface:** updated tables, section rail and Vietnamese translations.
+- **Update window:** Update now shows a window with the download progress and Cancel, installs the new version and opens it again, on Windows and Mac.
 - **Mac updates itself:** Update now downloads the new version, checks it, replaces the app and opens it again, with no Privacy & Security step. The helper asks for the administrator password only when the helper itself changes, not on every update.
 - **Mac shortcuts use ⌘:** ⌘W closes a tab, ⌘S saves, ⌘R reloads, ⌘K searches and ⌘M opens Mass Edit.
 

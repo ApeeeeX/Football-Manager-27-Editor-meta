@@ -93,16 +93,31 @@ public static class UpdateCheck
     /// Downloads the release file to <paramref name="target"/> and checks it against the release's checksum file. Returns the
     /// downloaded file; throws when the download or the check fails (the partial file is removed).
     /// </summary>
-    public static async Task<string> DownloadAsync(ReleaseInfo release, string target, CancellationToken ct = default)
+    public static async Task<string> DownloadAsync(ReleaseInfo release, string target, CancellationToken ct = default,
+        IProgress<(long Done, long? Total)>? progress = null)
     {
         using var http = Client(TimeSpan.FromMinutes(5));
         string sums = await http.GetStringAsync(release.ChecksumsUrl, ct);
         string expected = ChecksumFor(sums, release.AssetName) ?? throw new InvalidDataException(Loc.S("The release has no checksum for the editor"));
         try
         {
-            await using (var source = await http.GetStreamAsync(release.AssetUrl, ct))
-            await using (var file = File.Create(target))
-                await source.CopyToAsync(file, ct);
+            using (var response = await http.GetAsync(release.AssetUrl, HttpCompletionOption.ResponseHeadersRead, ct))
+            {
+                response.EnsureSuccessStatusCode();
+                long? total = response.Content.Headers.ContentLength;
+                await using var source = await response.Content.ReadAsStreamAsync(ct);
+                await using var file = File.Create(target);
+                var buffer = new byte[81920];
+                long done = 0;
+                int read;
+                progress?.Report((0, total));
+                while ((read = await source.ReadAsync(buffer, ct)) > 0)
+                {
+                    await file.WriteAsync(buffer.AsMemory(0, read), ct);
+                    done += read;
+                    progress?.Report((done, total));
+                }
+            }
             await using var check = File.OpenRead(target);
             string actual = Convert.ToHexString(await SHA256.HashDataAsync(check, ct)).ToLowerInvariant();
             if (actual != expected) throw new InvalidDataException(Loc.S("The downloaded file does not match the release checksum"));

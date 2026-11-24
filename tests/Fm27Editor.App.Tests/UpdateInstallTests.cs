@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.LogicalTree;
 using Fm27Editor.App;
 
 namespace Fm27Editor.App.Tests;
@@ -144,5 +145,30 @@ public sealed class UpdateInstallTests
             Assert.Equal(["Fm27Editor.app"], Directory.GetFileSystemEntries(Path.Combine(dir, "Applications")).Select(Path.GetFileName));
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void The_update_window_shows_download_progress_and_blocks_cancel_while_installing()
+    {
+        AvaloniaTestThread.Run(() =>
+        {
+            using var cancel = new CancellationTokenSource();
+            var release = new ReleaseInfo("v9.9.9", UpdateCheck.MacDiskImageName, "https://x/a.dmg", "https://x/SHA256SUMS.txt");
+            var (window, show, finish) = MainWindow.UpdateProgressWindow(release, cancel);
+            var bar = window.GetLogicalDescendants().OfType<Avalonia.Controls.ProgressBar>().Single();
+            var text = window.GetLogicalDescendants().OfType<Avalonia.Controls.TextBlock>().First();
+            var cancelButton = window.GetLogicalDescendants().OfType<Avalonia.Controls.Button>().Single();
+
+            show(16 * 1024 * 1024, 32 * 1024 * 1024, null);
+            Assert.False(bar.IsIndeterminate);
+            Assert.Equal(50, bar.Value);
+            Assert.Contains("16.0 / 32.0 MB", text.Text);
+
+            show(0, null, "Installing the new version…");
+            Assert.True(bar.IsIndeterminate);
+            Assert.False(cancelButton.IsEnabled);
+            Assert.False(cancel.IsCancellationRequested);
+            finish();
+        });
     }
 }
