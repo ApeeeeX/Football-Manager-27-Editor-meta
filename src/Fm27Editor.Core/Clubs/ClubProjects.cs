@@ -7,7 +7,15 @@ namespace Fm27Editor.Core.Clubs;
 
 public enum ClubProjectKind { StadiumExpansion, FacilityUpgrade }
 
-public sealed record ClubProjectQueueOffsets(int Vector, int Club, int Date, int? Stadium, uint? Vtable);
+public sealed record ClubProjectQueueOffsets(int Vector, int Club, int Date, int? Stadium, uint? Vtable)
+{
+    /// <summary>How to add an expansion row of the game's own shape (FM Touch 27.1.0, measured 24/11/2026); null where unmeasured.</summary>
+    public ClubProjectRowOffsets? NewRow { get; init; }
+}
+
+/// <summary>Fields of a stadium expansion row besides club, stadium and completion date: the row size, the start date, the
+/// seats added and the stadium's capacity and seating capacity when the works began.</summary>
+public sealed record ClubProjectRowOffsets(int Size, int StartDate, int AddedSeats, int Capacity, int SeatingCapacity);
 /// <summary>
 /// The game's table of pending stadium changes (<c>db::DATABASE_TABLE&lt;db::STADIUM_CHANGE&gt;</c>), the record that
 /// actually finishes a capacity change. Windows Steam 27.1.0, 18/12/2026: moving Wrexham's completion date (+0x34)
@@ -100,6 +108,70 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
                     !staged.TryWrite(project.ChangeDateAddress, BitConverter.GetBytes(WithDate(project.ChangeRawDate, today))))
                     throw new MemoryAccessException("Could not set the stadium change completion date");
             }
+        });
+    }
+
+    public bool CanFinishAnnounced => profile.Club?.Projects?.Expansions is { NewRow: not null, Stadium: not null }
+        && profile.Competition?.ClubSwap is not null && profile.Stadium is not null;
+
+    /// <summary>
+    /// Finishes an approved stadium expansion that has not started (shown as "Announced"): adds an expansion row due today,
+    /// copied from a row the game made and pointed at this club's home ground, so the game completes the works on its next
+    /// day as it does for its own rows. Rows are only added into the queue's spare capacity.
+    /// </summary>
+    public void FinishAnnouncedExpansion(ClubEntry club, DateOnly today, Func<int, ulong> allocate)
+    {
+        if (!CanFinishAnnounced) throw new NotSupportedException("Finishing announced projects is unavailable on this game build");
+        var stadiumLayout = profile.Stadium!;
+        var (layout, manager) = ReadManager(memory, club);
+        var queue = layout.Expansions;
+        var shape = queue.NewRow!;
+        if (ReadToday(memory) != today) throw new StaleObjectException("The game date changed since the projects were reviewed");
+        var overview = ReadOverview(club);
+        if (overview.AnnouncedExpansionDate is null) throw new StaleObjectException("The club has no announced stadium expansion");
+        if (club.FirstTeam is not { } team) throw new StaleObjectException("The club has no senior team");
+        ulong home = memory.ReadUInt64(team.Address + (ulong)profile.Competition!.ClubSwap!.TeamStadium);
+        if (home == 0 || memory.ReadUInt64(home) != moduleBase + stadiumLayout.VtableRva) throw new StaleObjectException("The home ground is unavailable");
+
+        ulong header = memory.ReadUInt64(manager + (ulong)queue.Vector);
+        var vector = memory.Read(header, 24);
+        ulong begin = BitConverter.ToUInt64(vector), end = BitConverter.ToUInt64(vector, 8), capacity = BitConverter.ToUInt64(vector, 16);
+        if (begin == 0 || end < begin || capacity < end || (end - begin) % 8 != 0) throw new StaleObjectException("The club projects queue is invalid");
+        if (end + 8 > capacity) throw new InvalidOperationException("The game's project queue is full; continue a few days and try again");
+
+        // A row the game made for another club supplies the fields whose meaning is unknown.
+        byte[]? template = null;
+        for (ulong at = begin; at < end && template is null; at += 8)
+        {
+            ulong row = memory.ReadUInt64(at);
+            if (row == 0) continue;
+            ulong rowClub = memory.ReadUInt64(row + (ulong)queue.Club), venue = memory.ReadUInt64(row + (ulong)queue.Stadium!.Value);
+            if (rowClub != 0 && venue != 0 && memory.ReadUInt64(venue) == moduleBase + stadiumLayout.VtableRva)
+                template = memory.Read(row, shape.Size);
+        }
+        if (template is null) throw new InvalidOperationException("The game has no expansion row to copy yet");
+
+        var fields = new Stadiums.StadiumWriter(memory, profile, moduleBase).ReadFields(home);
+        int seats = (int)fields.GetValueOrDefault(Stadiums.StadiumField.Capacity);
+        int seating = (int)fields.GetValueOrDefault(Stadiums.StadiumField.SeatingCapacity, seats);
+        int added = (int)Math.Max(1000, fields.GetValueOrDefault(Stadiums.StadiumField.ExpansionCapacity) - seats);
+        uint flags = BitConverter.ToUInt32(template, queue.Date) & 0xFE00u;
+        uint date = flags | (uint)today.DayOfYear | ((uint)today.Year << 16);
+        BitConverter.GetBytes(club.Address).CopyTo(template, queue.Club);
+        BitConverter.GetBytes(home).CopyTo(template, queue.Stadium!.Value);
+        BitConverter.GetBytes(date).CopyTo(template, queue.Date);
+        BitConverter.GetBytes(date).CopyTo(template, shape.StartDate);
+        BitConverter.GetBytes(added).CopyTo(template, shape.AddedSeats);
+        BitConverter.GetBytes(seats).CopyTo(template, shape.Capacity);
+        BitConverter.GetBytes(seating).CopyTo(template, shape.SeatingCapacity);
+
+        ulong block = allocate(shape.Size);
+        if (!memory.TryWrite(block, template)) throw new MemoryAccessException("Could not write the expansion row");
+        MemoryWriteBatch.Run(memory, staged =>
+        {
+            if (staged.ReadUInt64(header + 8) != end) throw new StaleObjectException("The club projects queue changed");
+            if (!staged.TryWrite(end, BitConverter.GetBytes(block)) || !staged.TryWrite(header + 8, BitConverter.GetBytes(end + 8)))
+                throw new MemoryAccessException("Could not add the expansion row");
         });
     }
 

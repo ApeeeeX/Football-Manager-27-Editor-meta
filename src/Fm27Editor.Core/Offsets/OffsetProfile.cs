@@ -757,6 +757,13 @@ public sealed class OffsetProfile
                         H("vector", queue.Vector); H("club", queue.Club); H("date", queue.Date);
                         if (queue.Stadium is { } stadium) H("stadium", stadium);
                         if (queue.Vtable is { } vtable) H("vtable", vtable);
+                        if (queue.NewRow is { } row)
+                        {
+                            w.WriteStartObject("newRow");
+                            H("size", row.Size); H("startDate", row.StartDate); H("addedSeats", row.AddedSeats);
+                            H("capacity", row.Capacity); H("seatingCapacity", row.SeatingCapacity);
+                            w.WriteEndObject();
+                        }
                         w.WriteEndObject();
                     }
                 }
@@ -984,7 +991,12 @@ public sealed class OffsetProfile
         obj.TryGetProperty(name, out var v) ? ParseHex(v.GetString()) : throw new FormatException($"{name} is missing");
 
     static Clubs.ClubProjectQueueOffsets ReadClubProjectQueue(JsonElement e) => new(
-        Hex(e, "vector"), Hex(e, "club"), Hex(e, "date"), OptHex(e, "stadium"), (uint?)OptHex(e, "vtable"));
+        Hex(e, "vector"), Hex(e, "club"), Hex(e, "date"), OptHex(e, "stadium"), (uint?)OptHex(e, "vtable"))
+    {
+        NewRow = e.TryGetProperty("newRow", out var r)
+            ? new(Hex(r, "size"), Hex(r, "startDate"), Hex(r, "addedSeats"), Hex(r, "capacity"), Hex(r, "seatingCapacity"))
+            : null,
+    };
 
     static int? OptHex(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var v) ? ParseHex(v.GetString()) : null;

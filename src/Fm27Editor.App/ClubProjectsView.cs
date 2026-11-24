@@ -48,7 +48,8 @@ public sealed partial class MainWindow
                         due || !session.CanWrite ? null : ActionButton("Finish today", () => FinishAsync([project], overview.Today)));
                 }
                 if (overview.AnnouncedExpansionDate is { } expansion)
-                    AddRow("Stadium expansion", Loc.F("Announced · Due {0}", DateSetting.Format(expansion)), null);
+                    AddRow("Stadium expansion", Loc.F("Announced · Due {0}", DateSetting.Format(expansion)),
+                        !session.CanWrite || !projects.CanFinishAnnounced ? null : ActionButton("Finish today", () => FinishAnnouncedAsync(overview.Today)));
                 if (overview.Planning is { } plan)
                     AddRow("New stadium", plan.ReviewDate is { } review
                         ? Loc.F("Planning · Review by {0}", DateSetting.Format(review))
@@ -84,6 +85,27 @@ public sealed partial class MainWindow
                         ? new ChangeLabel(ProjectName(project.Kind), Kind: ChangeValueKind.Date,
                             ValidateUndo: source => projects.ValidateUndo(source, club, project, today))
                         : null));
+            }
+            catch (Exception ex)
+            {
+                ShowMessage(UserMessage.For(ex));
+                return;
+            }
+            finally { SetBusy(false); }
+
+            await RefreshAsync();
+            if (CurrentSave()) status.Text = Loc.S("Project completion dates moved to today. Continue in FM to see updates.");
+        }
+
+        async Task FinishAnnouncedAsync(DateOnly today)
+        {
+            if (busy || !CurrentSave()) return;
+            SetBusy(true);
+            ShowMessage(null);
+            try
+            {
+                await Task.Run(() => edits.Execute("Club", club.DisplayName, "Finish Club Projects", () =>
+                    projects.FinishAnnouncedExpansion(club, today, session.AllocateGameBlock)));
             }
             catch (Exception ex)
             {
