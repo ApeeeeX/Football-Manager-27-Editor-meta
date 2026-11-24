@@ -9,6 +9,8 @@ A live editor for **Football Manager 27**, for offline single-player saves. It a
 on disk. Supported builds are listed by the JSON profiles in `offsets/`: Windows Steam `27.1.0+2505117` and `27.0.1+2503222`,
 Windows Game Pass `27.1.0+2505117` and `27.0.1+2494687`, macOS Steam and Touch (`*-mac.json`).
 
+FM Touch does not have staff allowances, team Tactical Understanding, referees, or the club relationship flags Can Name Stadium After Person and Clubs Don't Transfer Players. These are limits of that game, not missing work: do not try to add them or list them as open work. Club relationship reasons do exist on Touch.
+
 Writing game memory is a real action: use a throwaway save, keep a backup of the save, and expect the game to redraw only after you press Continue.
 
 ## 2. Requirements
@@ -107,7 +109,7 @@ Every change to `src/` or `offsets/` must update the newest `releases/<version>.
 scripts/check-release-log.sh origin/main HEAD
 ```
 
-- Keep one row per feature or fix: area, what changed, files, then one column each for Steam Windows, Game Pass, Steam macOS and Mac Touch. Each platform is **Checked**, **Reads**, **Not checked**, or **Missing**.
+- Keep one row per feature or fix: area, what changed, files, then one column each for Steam Windows, Game Pass, Steam macOS and Mac Touch. Each platform is **Checked**, **Reads**, **Not checked**, **Missing**, or **—** when that game does not have the feature.
 - Update the same row when a feature changes. Move unfinished work to **Open work** and remove it when finished.
 - Record only what was actually checked. Do not write RVAs, offsets or private notes here.
 - After a version is tagged, create the next `releases/<version>.md`. `CHANGELOG.md` stays the user-facing summary.
