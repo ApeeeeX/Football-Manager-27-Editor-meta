@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Fm27Editor.Core.Clubs;
+using Fm27Editor.Core.CodeGen;
 using Fm27Editor.Core.Game;
 using Fm27Editor.Core.Memory;
 using Fm27Editor.Core.Players;
@@ -197,6 +198,7 @@ public static class NewBuildDiscoverer
             discoveredVtablePaths.Remove("player.callUps.containerVtable");
         }
         ProbePeCodeSignatures(image, memory, game.ModuleBase, provisional, working, rawBase, discoveredRootPaths, structuralOverrides, items);
+        ProbeArm64CodeSignatures(memory, game.ModuleBase, (ulong)game.ModuleSize, provisional, working, discoveredRootPaths, items);
 
         // Build final resolved profile + compact "extends" output.
         var finalProfile = OffsetProfile.Load(working.ToJsonString(), resolveLayout);
@@ -1511,6 +1513,56 @@ public static class NewBuildDiscoverer
             items.Add(new("forceAccept.boardRequests", DiscoveryStatus.Warn, "NOT_FOUND",
                 "Could not uniquely match both Force Board Request AOB sites in executable section"));
         }
+    }
+
+    /// <summary>
+    /// Force Board Request gates on macOS: the conditional branch that turns down a board request and the one that turns down
+    /// a club vision change. Steam macOS 27.1.0+2505117 (0x2766368, 0x1AB0744) and FM Touch 27.1.0+2505719 (0x284B124,
+    /// 0x1B081F4) carry the same words at both sites; the branch target is masked. Each pattern matches once in each build.
+    /// A site already patched by the editor does not match; the probe then asks for the switch to be turned off.
+    /// </summary>
+    static readonly (string Name, Arm64Word[] Pattern)[] Arm64ForceBoardSites =
+    [
+        ("boardRequests", [new(0x540005A1, 0xFF00001F), new(0xB90047F9), new(0x7940FA88)]), // b.ne; str w25,[sp,#0x44]; ldrh w8,[x20,#0x7c]
+        ("clubVision", [new(0x540004A4, 0xFF00001F), new(0x52800088), new(0x39019E68)]),    // b.mi; mov w8,#4; strb w8,[x19,#0x67]
+    ];
+
+    static void ProbeArm64CodeSignatures(
+        IProcessMemory memory,
+        ulong moduleBase,
+        ulong moduleSize,
+        OffsetProfile profile,
+        JsonObject working,
+        List<string> discoveredRootPaths,
+        List<DiscoveryItem> items)
+    {
+        if (!profile.IsArm64) return;
+        var snapshot = Arm64SiteFinder.TryCaptureCode(memory, moduleBase, moduleSize);
+        var found = new List<(string Name, string Rva, string Original)>();
+        foreach (var (name, pattern) in Arm64ForceBoardSites)
+        {
+            try
+            {
+                ulong at = Arm64SiteFinder.Find(memory, moduleBase, moduleSize, $"forceAccept.{name}", pattern, snapshot: snapshot);
+                var original = memory.Read(at, 4);
+                found.Add((name, Hex((uint)(at - moduleBase)), string.Join(' ', original.Select(b => $"{b:X2}"))));
+            }
+            catch (InvalidOperationException ex)
+            {
+                items.Add(new("forceAccept.boardRequests", DiscoveryStatus.Warn, "NOT_FOUND", ex.Message,
+                    "turn Force Board Request off in the editor, restart the game if it was on, and run newbuild again"));
+                return;
+            }
+        }
+        foreach (var (name, rva, original) in found)
+        {
+            ProfileJsonResolver.SetByPath(working, $"forceAccept.{name}Rva", rva);
+            ProfileJsonResolver.SetByPath(working, $"forceAccept.{name}Original", original);
+            foreach (string key in new[] { $"forceAccept.{name}Rva", $"forceAccept.{name}Original" })
+                if (!discoveredRootPaths.Contains(key)) discoveredRootPaths.Add(key);
+        }
+        items.Add(new("forceAccept.boardRequests", DiscoveryStatus.Pass, $"{found[0].Rva} / {found[1].Rva}",
+            $"gate1={found[0].Original}, gate2={found[1].Original}"));
     }
 
     public static bool TryReadPrimaryPeCodeSection(ReadOnlySpan<byte> header, IProcessMemory memory, ulong moduleBase, out uint codeRva, out byte[] code)

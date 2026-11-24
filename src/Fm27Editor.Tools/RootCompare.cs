@@ -41,8 +41,11 @@ static class VtName
 {
     public static int Run(string[] rvas)
     {
-        var game = GameProcess.Locate();
-        using var memory = new WindowsProcessMemory(game.ProcessId, false);
+        var game = GameProcess.LocateAll(OperatingSystem.IsMacOS() ? "game_plugin" : GameProcess.DefaultModule)[0];
+        IProcessMemory memory = OperatingSystem.IsMacOS()
+            ? MacMemory.Open(game.ProcessId, writable: false)
+            : new WindowsProcessMemory(game.ProcessId, writable: false);
+        using var owned = memory as IDisposable;
         var rtti = Fm27Editor.Core.Offsets.RttiIndex.Build(Fm27Editor.Core.Offsets.ModuleImage.ReadForDiscovery(memory, game.ModuleBase, game.ModuleSize));
         foreach (string s in rvas)
         {

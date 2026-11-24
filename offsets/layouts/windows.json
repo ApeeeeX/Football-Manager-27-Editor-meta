@@ -501,7 +501,8 @@
       "clubKind": "0x1",
       "personKind": "0x3",
       "teamKind": "0x4",
-      "nameStadium": "0xE"
+      "nameStadium": "0xE",
+      "noTransfers": "0xE"
     },
     "financeLists": {
       "sponsorsPointer": "0x130",
@@ -875,6 +876,48 @@
       "sellOnVtable": "0x4E01C88",
       "appearanceFeeVtable": "0x4F250E8",
       "competitionBonusVtable": "0x4F24F88"
+    },
+    "projects": {
+      "stadiumPlans": "0x28",
+      "stadiumPlanExpiry": "0x38",
+      "boardRequests": {
+        "holderType": "0x74",
+        "requests": "0x78",
+        "vector": "0x18",
+        "type": "0x13C",
+        "flags": "0x140",
+        "targetDate": "0x12C",
+        "completedDate": "0x130"
+      },
+      "managerRoot": "0x587C600",
+      "managerVtable": "0x4EF65F0",
+      "expansions": {
+        "vector": "0x18",
+        "club": "0x0",
+        "date": "0x18",
+        "stadium": "0x8",
+        "newRow": {
+          "size": "0x40",
+          "startDate": "0x1C",
+          "addedSeats": "0x20",
+          "capacity": "0x30",
+          "seatingCapacity": "0x34"
+        }
+      },
+      "upgrades": {
+        "vector": "0x20",
+        "club": "0x8",
+        "date": "0x10",
+        "vtable": "0x4C9BE18"
+      },
+      "stadiumChanges": {
+        "tableRoot": "0x587B840",
+        "tableVtable": "0x4DE8EE8",
+        "vector": "0x80",
+        "vtable": "0x5053058",
+        "stadium": "0x20",
+        "date": "0x34"
+      }
     }
   },
   "gameDate": {
@@ -1095,7 +1138,29 @@
     "competitionLevel": "0x199",
     "trophy": "0x19C",
     "lowestOfficialCategory": "0x19E",
-    "flags": "0x1A0"
+    "flags": "0x1A0",
+    "clubSwap": {
+      "teamStadium": "0x78",
+      "fixtureStadium": "0x28",
+      "secondaryStandings": "0x140",
+      "standingTeam": "0x88",
+      "teamSeasonState": "0xA0",
+      "competitions": "0x50",
+      "participationStride": "0x18",
+      "participationStats": "0x8",
+      "statsVtable": "0x4F47F48",
+      "statsTeam": "0x18"
+    },
+    "fixtures": {
+      "vtable": "0x4E17768",
+      "nameVtable": "0x4C751D8",
+      "home": "0x8",
+      "away": "0x10",
+      "name": "0x20",
+      "competition": "0x18",
+      "season": "0x30",
+      "date": "0x4C"
+    }
   },
   "award": {
     "vtable": "0x4E57FE8",
@@ -1141,7 +1206,9 @@
     "managerUnlockables": {
       "flags": "0x3FC",
       "allPlayersInterested": "0x1",
-      "becomeUnsackable": "0x2"
+      "becomeUnsackable": "0x2",
+      "squadRegistrationAnytime": "0x100",
+      "squadNumbersAnytime": "0x200"
     },
     "allowances": {
       "teamManager": "0x80",
@@ -1664,6 +1731,42 @@
       "class": "db::RETIRED_PERSON_NAME_STRINGS",
       "offset": 0,
       "optional": true
+    },
+    "inMatch.playerVtable": {
+      "class": "simatch::MATCH_PLAYER",
+      "offset": 0
+    },
+    "inMatch.dataVtable": {
+      "class": "simatch::MATCH_PLAYING_DATA",
+      "offset": 0
+    },
+    "club.projects.managerVtable": {
+      "class": "FINANCE_MANAGER",
+      "offset": 0
+    },
+    "club.projects.upgrades.vtable": {
+      "class": "db::FACILITY_UPGRADE",
+      "offset": 0
+    },
+    "club.projects.stadiumChanges.tableVtable": {
+      "class": ".?AV?$DATABASE_TABLE@VSTADIUM_CHANGE@db@@@db@@",
+      "offset": 0
+    },
+    "club.projects.stadiumChanges.vtable": {
+      "class": "db::STADIUM_CHANGE",
+      "offset": 0
+    },
+    "competition.clubSwap.statsVtable": {
+      "class": "GAME_TEAM_COMP_STATS",
+      "offset": 0
+    },
+    "competition.fixtures.vtable": {
+      "class": "sicomps::FIXTURE",
+      "offset": 0
+    },
+    "competition.fixtures.nameVtable": {
+      "class": "db::FIXTURE_NAME",
+      "offset": 0
     }
   },
   "rootSpecs": {
@@ -1750,6 +1853,31 @@
     "gameDate.primary.rootRva": {
       "kind": "alias",
       "vtablePath": "player.proposals.listRootRva"
+    },
+    "club.projects.managerRoot": {
+      "kind": "object",
+      "vtablePath": "club.projects.managerVtable"
+    },
+    "club.projects.stadiumChanges.tableRoot": {
+      "kind": "object",
+      "vtablePath": "club.projects.stadiumChanges.tableVtable"
     }
+  },
+  "inMatch": {
+    "playerVtable": "0x4F9FDF8",
+    "dataVtable": "0x4FA0018",
+    "personVtable": "@player.relations.personVtable",
+    "playerStaffPersonVtable": "@staff.kinds[1].personVtable",
+    "data": "0x478",
+    "sourcePerson": "0x28",
+    "personUid": "0xC",
+    "fixture": "0x280",
+    "side": "0x288",
+    "positionBase": "0x480",
+    "attributeBase": "0x48F",
+    "initialCondition": "0x1222",
+    "condition": "0x2168",
+    "liveCondition": "0x2214",
+    "morale": "0x123B"
   }
 }

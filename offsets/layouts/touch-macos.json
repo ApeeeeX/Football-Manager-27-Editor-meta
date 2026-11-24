@@ -882,6 +882,63 @@
         "path": "0x100->0x119",
         "type": "byte"
       }
+    },
+    "projects": {
+      "stadiumPlans": "0x28",
+      "stadiumPlanExpiry": "0x38",
+      "boardRequests": {
+        "holderType": "0x74",
+        "requests": "0x78",
+        "vector": "0x18",
+        "type": "0x13C",
+        "flags": "0x140",
+        "targetDate": "0x12C",
+        "completedDate": "0x130",
+        "close": {
+          "planningFlag": "0x141",
+          "outcome": "0x138"
+        }
+      },
+      "managerRoot": "0x592DF00",
+      "managerVtable": "0x58679F0",
+      "expansions": {
+        "vector": "0x18",
+        "club": "0x0",
+        "date": "0x18",
+        "stadium": "0x8",
+        "newRow": {
+          "size": "0x40",
+          "startDate": "0x1C",
+          "addedSeats": "0x20",
+          "capacity": "0x30",
+          "seatingCapacity": "0x34"
+        }
+      },
+      "upgrades": {
+        "vector": "0x20",
+        "club": "0x8",
+        "date": "0x10",
+        "vtable": "0x58101E8"
+      },
+      "stadiumChanges": {
+        "tableRoot": "0x594C020",
+        "tableVtable": "0x5813990",
+        "vector": "0x88",
+        "vtable": "0x582F6C0",
+        "stadium": "0x20",
+        "date": "0x34",
+        "filter": {
+          "kind": "0x64",
+          "expansionKind": "0x2",
+          "flags": "0x65",
+          "appliedBit": "0x0"
+        },
+        "move": {
+          "kind": "0x1",
+          "newStadium": "0x28",
+          "secondDate": "0x38"
+        }
+      }
     }
   },
   "gameDate": {
@@ -1116,7 +1173,30 @@
     "competitionLevel": "0x1AA",
     "trophy": "0x100",
     "lowestOfficialCategory": "0x102",
-    "flags": "0x1A9"
+    "flags": "0x1A9",
+    "clubSwap": {
+      "teamStadium": "0x78",
+      "fixtureStadium": "0x28",
+      "secondaryStandings": "0x140",
+      "standingTeam": "0x88",
+      "standingName": "0x78",
+      "teamSeasonState": "0xA0",
+      "competitions": "0x50",
+      "participationStride": "0x18",
+      "participationStats": "0x8",
+      "statsVtable": "0x5810DD8",
+      "statsTeam": "0x18"
+    },
+    "fixtures": {
+      "vtable": "0x58E49F0",
+      "nameVtable": "0x581D768",
+      "home": "0x8",
+      "away": "0x10",
+      "name": "0x20",
+      "competition": "0x18",
+      "season": "0x30",
+      "date": "0x4C"
+    }
   },
   "award": {
     "vtable": "0x57C4E08",
@@ -1245,6 +1325,13 @@
       "Interference": "0x16",
       "Patience": "0x19",
       "Resources": "0x1B"
+    },
+    "managerUnlockables": {
+      "flags": "0x3FC",
+      "allPlayersInterested": "0x1",
+      "becomeUnsackable": "0x2",
+      "squadRegistrationAnytime": "0x100",
+      "squadNumbersAnytime": "0x200"
     }
   },
   "stadium": {
@@ -1713,6 +1800,50 @@
       "class": "db::RETIRED_PERSON_NAME_STRINGS",
       "offset": 0,
       "optional": true
+    },
+    "inMatch.playerVtable": {
+      "class": "simatch::MATCH_PLAYER",
+      "offset": 0
+    },
+    "inMatch.dataVtable": {
+      "class": "simatch::MATCH_PLAYING_DATA",
+      "offset": 0
+    },
+    "inMatch.personVtable": {
+      "class": "db::ACTUAL_PLAYER",
+      "offset": 728
+    },
+    "inMatch.playerStaffPersonVtable": {
+      "class": "db::ACTUAL_PLAYER_AND_NON_PLAYER",
+      "offset": 976
+    },
+    "club.projects.managerVtable": {
+      "class": "FINANCE_MANAGER",
+      "offset": 0
+    },
+    "club.projects.upgrades.vtable": {
+      "class": "db::FACILITY_UPGRADE",
+      "offset": 0
+    },
+    "club.projects.stadiumChanges.tableVtable": {
+      "class": "N2db14DATABASE_TABLEINS_14STADIUM_CHANGEEEE",
+      "offset": 0
+    },
+    "club.projects.stadiumChanges.vtable": {
+      "class": "db::STADIUM_CHANGE",
+      "offset": 0
+    },
+    "competition.clubSwap.statsVtable": {
+      "class": "GAME_TEAM_COMP_STATS",
+      "offset": 0
+    },
+    "competition.fixtures.vtable": {
+      "class": "sicomps::FIXTURE",
+      "offset": 0
+    },
+    "competition.fixtures.nameVtable": {
+      "class": "db::FIXTURE_NAME",
+      "offset": 0
     }
   },
   "rootSpecs": {
@@ -1790,8 +1921,7 @@
       "maxOffset": "0x3000"
     },
     "award.listRootRva": {
-      "kind": "indirectVector",
-      "holderClass": "AWARD_MANAGER",
+      "kind": "indirectVector", "holderClass": "AWARD_MANAGER",
       "vtablePath": "award.vtable",
       "offsetPath": "award.listOffset",
       "min": 50,
@@ -1830,6 +1960,31 @@
       "kind": "object",
       "vtablePath": "gameDate.crossCheck.objectVtable",
       "optional": true
+    },
+    "club.projects.managerRoot": {
+      "kind": "object",
+      "vtablePath": "club.projects.managerVtable"
+    },
+    "club.projects.stadiumChanges.tableRoot": {
+      "kind": "object",
+      "vtablePath": "club.projects.stadiumChanges.tableVtable"
     }
+  },
+  "inMatch": {
+    "playerVtable": "0x5910CB0",
+    "dataVtable": "0x59104A8",
+    "personVtable": "0x57FC578",
+    "playerStaffPersonVtable": "0x58026D8",
+    "data": "0x470",
+    "sourcePerson": "0x20",
+    "personUid": "0xC",
+    "fixture": "0x280",
+    "side": "0x288",
+    "positionBase": "0x478",
+    "attributeBase": "0x487",
+    "initialCondition": "0x120A",
+    "condition": "0x2158",
+    "liveCondition": "0x2204",
+    "morale": "0x1233"
   }
 }
