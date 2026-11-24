@@ -64,12 +64,12 @@ public class MacHelperProcessMemoryTests
 
         try
         {
-            var first = new MacHelperProcessMemory(1234, writable: false, sockPath, timeoutMs: 250);
+            var first = new MacHelperProcessMemory(1234, writable: false, sockPath, timeoutMs: MacHelperProcessMemory.ReceiveTimeoutMs);
             Assert.ThrowsAny<Exception>(() => new MacHelperProcessMemory(1234, writable: true, sockPath, timeoutMs: 200));
 
             first.Dispose();
 
-            using var third = new MacHelperProcessMemory(1234, writable: true, sockPath, timeoutMs: 2000);
+            using var third = new MacHelperProcessMemory(1234, writable: true, sockPath, timeoutMs: MacHelperProcessMemory.ReceiveTimeoutMs);
             Assert.True(third.CanWrite);
         }
         finally
@@ -178,7 +178,7 @@ public class MacHelperProcessMemoryTests
 
         try
         {
-            using var helper = new MacHelperProcessMemory(1234, writable: true, sockPath, timeoutMs: 2000);
+            using var helper = new MacHelperProcessMemory(1234, writable: true, sockPath, timeoutMs: MacHelperProcessMemory.ReceiveTimeoutMs);
             var patchHost = (Fm27Editor.Core.Presets.ICodePatchHost)helper;
             ulong cave = patchHost.AllocateNear(0x1_5F00_0000UL, 0x14000);
             Assert.Equal(0x1_6000_0000UL, cave);

@@ -447,7 +447,7 @@ public class MacHelperReadTransportTests
         });
         try
         {
-            using (var helper = new MacHelperProcessMemory(1234, true, path, 3000)) test(helper);
+            using (var helper = new MacHelperProcessMemory(1234, true, path, MacHelperProcessMemory.ReceiveTimeoutMs)) test(helper);
             await server.WaitAsync(TimeSpan.FromSeconds(10));
         }
         finally
