@@ -150,11 +150,12 @@ public static class UpdateCheck
     /// </summary>
     public static string? MacBundleOf(string? processPath, bool arm64 = true)
     {
-        if (!arm64 || string.IsNullOrEmpty(processPath)) return null;
-        string? macOs = Path.GetDirectoryName(processPath), contents = Path.GetDirectoryName(macOs), bundle = Path.GetDirectoryName(contents);
-        if (Path.GetFileName(processPath) != "Fm27Editor" || Path.GetFileName(macOs) != "MacOS" || Path.GetFileName(contents) != "Contents" ||
-            bundle is null || !bundle.EndsWith(".app", StringComparison.Ordinal))
+        // macOS paths are split on "/" here, not with Path, so the rule reads the same on every platform.
+        const string Tail = "/Contents/MacOS/Fm27Editor";
+        if (!arm64 || string.IsNullOrEmpty(processPath) || !processPath.StartsWith('/') || !processPath.EndsWith(Tail, StringComparison.Ordinal))
             return null;
+        string bundle = processPath[..^Tail.Length];
+        if (!bundle.EndsWith(".app", StringComparison.Ordinal) || bundle.LastIndexOf('/') < 0) return null;
         if (bundle.StartsWith("/Volumes/", StringComparison.Ordinal) || bundle.Contains("/AppTranslocation/", StringComparison.Ordinal)) return null;
         return bundle;
     }
