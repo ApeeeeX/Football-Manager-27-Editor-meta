@@ -14,6 +14,8 @@ public static partial class Loc
         m["Search anything — players, clubs, staff, nations, competitions, stadiums, awards, referees, cities"] =
             "Tìm bất kỳ thứ gì — cầu thủ, CLB, nhân viên, quốc gia, giải đấu, sân vận động, giải thưởng, trọng tài, thành phố";
         m["Advanced Search"] = "Tìm kiếm nâng cao";
+        m["Save changes on current page (Ctrl+S)"] = "Lưu thay đổi ở trang hiện tại (Ctrl+S)";
+        m["Reload current screen (Ctrl+R)"] = "Tải lại màn hình hiện tại (Ctrl+R)";
         m["Mass Edit (Ctrl+M)"] = "Chỉnh sửa hàng loạt (Ctrl+M)";
         m["Edit History"] = "Lịch sử chỉnh sửa";
         m["Gameplay Tools (Wonderkid Academy & Development Speed)"] = "Công cụ trong game (Học viện Thần đồng & Tốc độ phát triển)";

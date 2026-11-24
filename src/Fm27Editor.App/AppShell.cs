@@ -302,7 +302,7 @@ public sealed partial class MainWindow
             Padding = new Thickness(6, 2),
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = "Ctrl+K", FontSize = 11.5, Foreground = Brush("#94A3B8") },
+            Child = new TextBlock { Text = Shortcuts.Label("Ctrl+K"), FontSize = 11.5, Foreground = Brush("#94A3B8") },
         };
         DockPanel.SetDock(shortcutPill, Dock.Right);
         searchRow.Children.Add(shortcutPill);
@@ -399,17 +399,17 @@ public sealed partial class MainWindow
         };
         KeyDown += (_, e) =>
         {
-            if (e.Key == Key.K && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            if (e.Key == Key.K && Shortcuts.Holds(e.KeyModifiers))
             {
                 OpenUnified();
                 e.Handled = true;
             }
-            else if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            else if (e.Key == Key.S && Shortcuts.Holds(e.KeyModifiers))
             {
                 SaveCurrentEntity();
                 e.Handled = true;
             }
-            else if (e.Key == Key.R && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            else if (e.Key == Key.R && Shortcuts.Holds(e.KeyModifiers))
             {
                 ReloadCurrentScreen();
                 e.Handled = true;

@@ -482,6 +482,7 @@ public static partial class Loc
         m["Graphics: {0}"] = "Graphics: {0}";
         m["Not installed"] = "Chưa cài đặt";
         m["The downloaded file does not match the release checksum"] = "Tệp tải về không khớp mã kiểm tra checksum của bản phát hành";
+        m["The disk image has no editor"] = "File dmg không chứa trình chỉnh sửa";
         m["The release has no checksum for the editor"] = "Bản phát hành không có mã checksum cho trình chỉnh sửa";
 
         // Staff

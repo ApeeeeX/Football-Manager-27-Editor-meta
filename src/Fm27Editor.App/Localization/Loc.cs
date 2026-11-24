@@ -47,7 +47,9 @@ public static partial class Loc
 
     public static string T(string english, string vietnamese) => IsVi ? vietnamese : english;
 
-    public static string S(string english)
+    public static string S(string english) => Shortcuts.Label(Translate(english));
+
+    static string Translate(string english)
     {
         if (!IsVi || string.IsNullOrEmpty(english)) return english;
         if (AllVi.TryGetValue(english, out var exact)) return exact;

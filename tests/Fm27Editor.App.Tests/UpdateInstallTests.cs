@@ -28,7 +28,7 @@ public sealed class UpdateInstallTests
         var r = Read(Release130, "1.2.0");
         Assert.NotNull(r);
         Assert.Equal("v1.3.0", r.Tag);
-        Assert.Equal("https://github.com/Jackhamerp24/Football-Manager-27-Editor/releases/download/v1.3.0/Fm27Editor.exe", r.ExeUrl);
+        Assert.Equal("https://github.com/Jackhamerp24/Football-Manager-27-Editor/releases/download/v1.3.0/Fm27Editor.exe", r.AssetUrl);
         Assert.EndsWith("/v1.3.0/SHA256SUMS.txt", r.ChecksumsUrl);
     }
 
@@ -86,6 +86,62 @@ public sealed class UpdateInstallTests
             File.WriteAllText(exe, "old");
             Assert.ThrowsAny<IOException>(() => UpdateCheck.Swap(exe, Path.Combine(dir, "missing.new")));
             Assert.Equal("old", File.ReadAllText(exe));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void A_mac_build_asks_for_the_disk_image_and_its_checksum()
+    {
+        string json = Release130.Replace("Fm27Editor.exe\"", "Fm27Editor-mac-arm64.dmg\"").Replace("/Fm27Editor.exe", "/Fm27Editor-mac-arm64.dmg");
+        var r = UpdateCheck.FromJson(JsonDocument.Parse(json).RootElement, Version.Parse("1.2.0"), UpdateCheck.MacDiskImageName);
+        Assert.NotNull(r);
+        Assert.Equal(UpdateCheck.MacDiskImageName, r.AssetName);
+        Assert.EndsWith("/v1.3.0/Fm27Editor-mac-arm64.dmg", r.AssetUrl);
+        Assert.Null(UpdateCheck.FromJson(JsonDocument.Parse(Release130).RootElement, Version.Parse("1.2.0"), UpdateCheck.MacDiskImageName));
+    }
+
+    [Theory]
+    [InlineData("/Applications/Fm27Editor.app/Contents/MacOS/Fm27Editor", true, "/Applications/Fm27Editor.app")]
+    [InlineData("/Users/me/Apps/FM27 Editor.app/Contents/MacOS/Fm27Editor", true, "/Users/me/Apps/FM27 Editor.app")]
+    [InlineData("/Volumes/FM27 Editor/Fm27Editor.app/Contents/MacOS/Fm27Editor", true, null)]
+    [InlineData("/private/var/folders/x/AppTranslocation/ABC/d/Fm27Editor.app/Contents/MacOS/Fm27Editor", true, null)]
+    [InlineData("/Applications/Fm27Editor.app/Contents/MacOS/Fm27Editor", false, null)]
+    [InlineData("/Users/me/src/bin/Release/net10.0/Fm27Editor", true, null)]
+    [InlineData("C:\\Tools\\Fm27Editor.exe", true, null)]
+    public void Only_an_installed_apple_silicon_bundle_updates_itself(string path, bool arm64, string? bundle) =>
+        Assert.Equal(bundle, UpdateCheck.MacBundleOf(path, arm64));
+
+    [Fact]
+    public void A_downloaded_disk_image_replaces_the_bundle_and_cleanup_removes_the_old_one()
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        string dir = Directory.CreateTempSubdirectory("fm27macupdate").FullName;
+        try
+        {
+            string MakeBundle(string root, string text)
+            {
+                string bundle = Path.Combine(root, "Fm27Editor.app");
+                Directory.CreateDirectory(Path.Combine(bundle, "Contents", "MacOS"));
+                File.WriteAllText(Path.Combine(bundle, "Contents", "MacOS", "Fm27Editor"), text);
+                return bundle;
+            }
+            string installed = MakeBundle(Path.Combine(dir, "Applications"), "old");
+            string source = Path.Combine(dir, "image");
+            MakeBundle(source, "new");
+            Directory.CreateSymbolicLink(Path.Combine(source, "Applications"), "/Applications");
+            string image = Path.Combine(dir, "update.dmg");
+            var create = System.Diagnostics.Process.Start("hdiutil", ["create", "-quiet", "-volname", "FM27 Editor", "-srcfolder", source, "-format", "UDZO", image])!;
+            create.WaitForExit();
+            Assert.Equal(0, create.ExitCode);
+
+            UpdateCheck.InstallMacBundle(image, installed);
+            Assert.Equal("new", File.ReadAllText(Path.Combine(installed, "Contents", "MacOS", "Fm27Editor")));
+            string old = Path.Combine(dir, "Applications", ".Fm27Editor.app.old");
+            Assert.Equal("old", File.ReadAllText(Path.Combine(old, "Contents", "MacOS", "Fm27Editor")));
+            UpdateCheck.CleanUpMac(installed);
+            Assert.False(Directory.Exists(old));
+            Assert.Equal(["Fm27Editor.app"], Directory.GetFileSystemEntries(Path.Combine(dir, "Applications")).Select(Path.GetFileName));
         }
         finally { Directory.Delete(dir, true); }
     }

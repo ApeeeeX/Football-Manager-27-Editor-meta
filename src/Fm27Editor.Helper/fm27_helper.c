@@ -74,6 +74,10 @@
 #define VM_PROT_RW (VM_PROT_READ | VM_PROT_WRITE)
 #define VM_PROT_RWX (VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE)
 
+/* The editor reinstalls the helper, which asks for an administrator password, only when this number changes.
+ * Raise it whenever the helper's behaviour or protocol changes. */
+__attribute__((used)) static const char fm27_helper_version[] = "FM27_HELPER_VERSION=2;";
+
 /* Windows PAGE_* values the editor's code-patch presets use. */
 #define PAGE_READONLY 0x02
 #define PAGE_READWRITE 0x04

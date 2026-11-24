@@ -60,7 +60,26 @@ internal static partial class MacElevation
         {
             return false;
         }
-        return SameContent(bundled, Destination);
+        // A version marker, not the bytes: a rebuild of the same helper on another machine must not ask for the password again.
+        return HelperVersion(bundled) is { } version ? HelperVersion(Destination) == version : SameContent(bundled, Destination);
+    }
+
+    const string VersionMarker = "FM27_HELPER_VERSION=";
+
+    /// <summary>The number in the helper's "FM27_HELPER_VERSION=n;" marker; null when the file has none.</summary>
+    internal static int? HelperVersion(string path)
+    {
+        try { return HelperVersion(File.ReadAllBytes(path)); }
+        catch { return null; }
+    }
+
+    internal static int? HelperVersion(ReadOnlySpan<byte> bytes)
+    {
+        int at = bytes.IndexOf(Encoding.ASCII.GetBytes(VersionMarker));
+        if (at < 0) return null;
+        var rest = bytes[(at + VersionMarker.Length)..];
+        int end = rest.IndexOf((byte)';');
+        return end > 0 && int.TryParse(Encoding.ASCII.GetString(rest[..end]), out int version) ? version : null;
     }
 
     static bool SameContent(string left, string right)

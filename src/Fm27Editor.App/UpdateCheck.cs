@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -5,8 +6,8 @@ using System.Text.Json;
 
 namespace Fm27Editor.App;
 
-/// <summary>A newer release on GitHub: its tag and where its editor exe and checksum file are.</summary>
-public sealed record ReleaseInfo(string Tag, string ExeUrl, string ChecksumsUrl);
+/// <summary>A newer release on GitHub: its tag, the file this platform installs, and the checksum file.</summary>
+public sealed record ReleaseInfo(string Tag, string AssetName, string AssetUrl, string ChecksumsUrl);
 
 /// <summary>
 /// Asks GitHub's public API once at start for the latest release. Nothing is sent but the request itself; any failure
@@ -15,7 +16,7 @@ public sealed record ReleaseInfo(string Tag, string ExeUrl, string ChecksumsUrl)
 public static class UpdateCheck
 {
     const string Repository = "Jackhamerp24/Football-Manager-27-Editor";
-    public const string ExeName = "Fm27Editor.exe", ChecksumsName = "SHA256SUMS.txt";
+    public const string ExeName = "Fm27Editor.exe", MacDiskImageName = "Fm27Editor-mac-arm64.dmg", ChecksumsName = "SHA256SUMS.txt";
     public static string ReleasesPage => $"https://github.com/{Repository}/releases/latest";
     static string DownloadPrefix => $"https://github.com/{Repository}/releases/download/";
 
@@ -39,10 +40,10 @@ public static class UpdateCheck
     public static bool IsNewer(string? latestTag, Version current) => Parse(latestTag) is { } latest && latest > current;
 
     /// <summary>
-    /// The release in a GitHub "latest release" answer when it is newer than <paramref name="current"/> and carries the editor
-    /// exe and the checksum file, both from this repository's release downloads; otherwise null.
+    /// The release in a GitHub "latest release" answer when it is newer than <paramref name="current"/> and carries
+    /// <paramref name="asset"/> and the checksum file, both from this repository's release downloads; otherwise null.
     /// </summary>
-    public static ReleaseInfo? FromJson(JsonElement root, Version current)
+    public static ReleaseInfo? FromJson(JsonElement root, Version current, string asset = ExeName)
     {
         string? tag = root.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
         if (!IsNewer(tag, current) || !root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array) return null;
@@ -50,7 +51,7 @@ public static class UpdateCheck
             .Where(a => a.TryGetProperty("name", out var n) && n.GetString() == name)
             .Select(a => a.TryGetProperty("browser_download_url", out var u) ? u.GetString() : null)
             .FirstOrDefault(u => u is not null && u.StartsWith(DownloadPrefix, StringComparison.Ordinal));
-        return Asset(ExeName) is { } exe && Asset(ChecksumsName) is { } sums ? new(tag!, exe, sums) : null;
+        return Asset(asset) is { } url && Asset(ChecksumsName) is { } sums ? new(tag!, asset, url, sums) : null;
     }
 
     /// <summary>The SHA-256 listed for <paramref name="file"/> in a "hash  name" checksum file, lower case; null when absent.</summary>
@@ -73,7 +74,7 @@ public static class UpdateCheck
     }
 
     /// <summary>The newest release when it is newer than this build, otherwise null.</summary>
-    public static async Task<ReleaseInfo?> NewerReleaseAsync(CancellationToken ct = default)
+    public static async Task<ReleaseInfo?> NewerReleaseAsync(string asset = ExeName, CancellationToken ct = default)
     {
         if (CurrentVersion() is not { } current) return null;
         try
@@ -83,24 +84,23 @@ public static class UpdateCheck
             using var response = await http.GetAsync($"https://api.github.com/repos/{Repository}/releases/latest", ct);
             if (!response.IsSuccessStatusCode) return null;
             using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-            return FromJson(json.RootElement, current);
+            return FromJson(json.RootElement, current, asset);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException) { return null; }
     }
 
     /// <summary>
-    /// Downloads the release exe next to <paramref name="exePath"/> as "<c>Fm27Editor.exe.new</c>" and checks it against the
-    /// release's checksum file. Returns the downloaded file; throws when the download or the check fails (the partial file is removed).
+    /// Downloads the release file to <paramref name="target"/> and checks it against the release's checksum file. Returns the
+    /// downloaded file; throws when the download or the check fails (the partial file is removed).
     /// </summary>
-    public static async Task<string> DownloadAsync(ReleaseInfo release, string exePath, CancellationToken ct = default)
+    public static async Task<string> DownloadAsync(ReleaseInfo release, string target, CancellationToken ct = default)
     {
-        string target = exePath + ".new";
         using var http = Client(TimeSpan.FromMinutes(5));
         string sums = await http.GetStringAsync(release.ChecksumsUrl, ct);
-        string expected = ChecksumFor(sums, ExeName) ?? throw new InvalidDataException(Loc.S("The release has no checksum for the editor"));
+        string expected = ChecksumFor(sums, release.AssetName) ?? throw new InvalidDataException(Loc.S("The release has no checksum for the editor"));
         try
         {
-            await using (var source = await http.GetStreamAsync(release.ExeUrl, ct))
+            await using (var source = await http.GetStreamAsync(release.AssetUrl, ct))
             await using (var file = File.Create(target))
                 await source.CopyToAsync(file, ct);
             await using var check = File.OpenRead(target);
@@ -127,6 +127,72 @@ public static class UpdateCheck
         File.Move(exePath, old);
         try { File.Move(downloaded, exePath); }
         catch { File.Move(old, exePath); throw; }
+    }
+
+    /// <summary>
+    /// The .app bundle the running editor belongs to, when it can replace itself: an Apple silicon build whose executable is
+    /// <c>Fm27Editor.app/Contents/MacOS/Fm27Editor</c>, not run from the mounted disk image or from macOS's translocated copy.
+    /// </summary>
+    public static string? MacBundleOf(string? processPath, bool arm64 = true)
+    {
+        if (!arm64 || string.IsNullOrEmpty(processPath)) return null;
+        string? macOs = Path.GetDirectoryName(processPath), contents = Path.GetDirectoryName(macOs), bundle = Path.GetDirectoryName(contents);
+        if (Path.GetFileName(processPath) != "Fm27Editor" || Path.GetFileName(macOs) != "MacOS" || Path.GetFileName(contents) != "Contents" ||
+            bundle is null || !bundle.EndsWith(".app", StringComparison.Ordinal))
+            return null;
+        if (bundle.StartsWith("/Volumes/", StringComparison.Ordinal) || bundle.Contains("/AppTranslocation/", StringComparison.Ordinal)) return null;
+        return bundle;
+    }
+
+    static string Sibling(string bundle, string suffix) =>
+        Path.Combine(Path.GetDirectoryName(bundle)!, "." + Path.GetFileName(bundle) + suffix);
+
+    /// <summary>
+    /// Copies the editor out of a downloaded disk image next to <paramref name="bundle"/> and swaps it in. The running copy keeps
+    /// working from its moved files; the old bundle is removed at the next start. If the swap fails the old bundle is put back.
+    /// The file came through the editor rather than a browser, so it carries no quarantine mark and opens without a prompt.
+    /// </summary>
+    public static void InstallMacBundle(string diskImage, string bundle)
+    {
+        string mount = Directory.CreateTempSubdirectory("fm27-update-mount").FullName;
+        string staged = Sibling(bundle, ".new"), old = Sibling(bundle, ".old");
+        if (Directory.Exists(staged)) Directory.Delete(staged, true);
+        Run("hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, diskImage);
+        try
+        {
+            string source = Directory.GetDirectories(mount, "*.app")
+                .SingleOrDefault(app => File.Exists(Path.Combine(app, "Contents", "MacOS", "Fm27Editor")))
+                ?? throw new InvalidDataException(Loc.S("The disk image has no editor"));
+            Run("ditto", source, staged);
+        }
+        finally
+        {
+            try { Run("hdiutil", "detach", mount, "-force"); } catch (IOException) { }
+            try { Directory.Delete(mount); } catch (IOException) { }
+        }
+        if (Directory.Exists(old)) Directory.Delete(old, true);
+        Directory.Move(bundle, old);
+        try { Directory.Move(staged, bundle); }
+        catch { Directory.Move(old, bundle); throw; }
+    }
+
+    /// <summary>Removes the old and half-copied bundles an earlier macOS update left behind; best effort.</summary>
+    public static void CleanUpMac(string bundle)
+    {
+        foreach (var leftover in new[] { Sibling(bundle, ".old"), Sibling(bundle, ".new") })
+            try { if (Directory.Exists(leftover)) Directory.Delete(leftover, true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    static void Run(string file, params string[] args)
+    {
+        var start = new ProcessStartInfo(file) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+        using var process = Process.Start(start) ?? throw new IOException($"{file} did not start");
+        var errors = process.StandardError.ReadToEndAsync();
+        process.StandardOutput.ReadToEnd();
+        if (!process.WaitForExit(120_000)) { try { process.Kill(); } catch (InvalidOperationException) { } throw new IOException($"{file} timed out"); }
+        if (process.ExitCode != 0) throw new IOException($"{file} failed: {errors.Result.Trim()}");
     }
 
     /// <summary>Removes what an earlier update left behind; best effort.</summary>

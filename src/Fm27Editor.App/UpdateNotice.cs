@@ -13,14 +13,21 @@ public sealed partial class MainWindow
     static bool IsSelfUpdatable(string? exe) =>
         exe is not null && Path.GetFileName(exe).Equals(UpdateCheck.ExeName, StringComparison.OrdinalIgnoreCase);
 
+    static string? MacBundle() => OperatingSystem.IsMacOS()
+        ? UpdateCheck.MacBundleOf(Environment.ProcessPath, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
+        : null;
+
     async Task NotifyIfUpdateAsync()
     {
         string? exe = Environment.ProcessPath;
+        string? bundle = MacBundle();
         if (IsSelfUpdatable(exe))
             await Task.Run(() => UpdateCheck.CleanUp(exe!));
-        var release = await UpdateCheck.NewerReleaseAsync();
+        if (bundle is not null)
+            await Task.Run(() => UpdateCheck.CleanUpMac(bundle));
+        var release = await UpdateCheck.NewerReleaseAsync(bundle is not null ? UpdateCheck.MacDiskImageName : UpdateCheck.ExeName);
         if (release is null) return;
-        bool selfUpdatable = IsSelfUpdatable(exe);
+        bool selfUpdatable = IsSelfUpdatable(exe) || bundle is not null;
         await Dispatcher.UIThread.InvokeAsync(() =>
             ShowNotice(Loc.S("Update available"),
                 selfUpdatable
@@ -33,8 +40,9 @@ public sealed partial class MainWindow
     async Task UpdateAsync(ReleaseInfo release)
     {
         string? exe = Environment.ProcessPath;
-        // Only the single-file release exe can replace itself; a development build or a renamed copy goes to the download page.
-        if (!IsSelfUpdatable(exe))
+        string? bundle = MacBundle();
+        // Only the single-file release exe and the macOS app bundle can replace themselves; anything else goes to the download page.
+        if (!IsSelfUpdatable(exe) && bundle is null)
         {
             OpenReleasesPage();
             return;
@@ -42,9 +50,27 @@ public sealed partial class MainWindow
         status.Text = Loc.F("Downloading {0}…", release.Tag);
         try
         {
-            string downloaded = await UpdateCheck.DownloadAsync(release, exe!);
-            UpdateCheck.Swap(exe!, downloaded);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe!) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe) });
+            if (bundle is not null)
+            {
+                string image = Path.Combine(Path.GetTempPath(), $"fm27editor-{release.Tag}.dmg");
+                try
+                {
+                    await UpdateCheck.DownloadAsync(release, image);
+                    await Task.Run(() => UpdateCheck.InstallMacBundle(image, bundle));
+                }
+                finally { try { File.Delete(image); } catch (IOException) { } }
+                // Open the new bundle once this process has gone, so macOS starts it instead of focusing this one.
+                var relaunch = new System.Diagnostics.ProcessStartInfo("/bin/sh") { UseShellExecute = false };
+                foreach (var arg in new[] { "-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; open \"$2\"", "relaunch", Environment.ProcessId.ToString(), bundle })
+                    relaunch.ArgumentList.Add(arg);
+                System.Diagnostics.Process.Start(relaunch);
+            }
+            else
+            {
+                string downloaded = await UpdateCheck.DownloadAsync(release, exe! + ".new");
+                UpdateCheck.Swap(exe!, downloaded);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe!) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe) });
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException
                                        or TaskCanceledException or InvalidDataException or System.ComponentModel.Win32Exception)

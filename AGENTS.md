@@ -76,6 +76,8 @@ dotnet run --project src/Fm27Editor.Tools -c Release -- players "Kobbie Mainoo"
 - **Tests:** do not skip, disable, weaken or delete a failing test to get green. Explain why it fails before touching it. Expected values must come from an independent source (the game's own UI, a reference editor, bytes captured from the game, or hand calculation), not from the code under test.
 - **Unknown values** are reported as unknown; never substitute `-1` or an invented number.
 - Game data may be tracked, including the calibration save. Do not commit generated build output or local notes. Reverse-engineering notes and tool output belong on your own machine (`re/` is ignored apart from `re/tools/memscan`).
+- **macOS helper:** raise `FM27_HELPER_VERSION` in `src/Fm27Editor.Helper/fm27_helper.c` whenever the helper changes, and only then. The app reinstalls the helper, which asks for the administrator password, only when that number differs.
+- **Shortcuts** are written with Ctrl and go through `Shortcuts`, which uses Command on macOS.
 - When editing a file with mixed CRLF/LF endings, use an editor that preserves them and check the change landed.
 
 ## 7. Working on this repository

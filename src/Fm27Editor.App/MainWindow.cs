@@ -172,12 +172,12 @@ public sealed partial class MainWindow : Window
         SectionHost.SectionEdited += OnSectionEdited;
         KeyDown += (_, e) =>
         {
-            if (e.Key == Avalonia.Input.Key.M && (e.KeyModifiers & Avalonia.Input.KeyModifiers.Control) != 0)
+            if (e.Key == Avalonia.Input.Key.M && Shortcuts.Holds(e.KeyModifiers))
             {
                 OpenMassEdit();
                 e.Handled = true;
             }
-            else if (e.Key == Avalonia.Input.Key.W && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control)
+            else if (e.Key == Avalonia.Input.Key.W && Shortcuts.Only(e.KeyModifiers))
             {
                 CloseActiveTab();
                 e.Handled = true;
