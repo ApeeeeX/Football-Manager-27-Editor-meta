@@ -140,14 +140,14 @@ public sealed class UiSnapshotTests
                 Content = c,
             };
             window.Show();
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
 
             var rtb = new RenderTargetBitmap(new PixelSize(width, height), new Vector(96, 96));
             rtb.Render(window);
             rtb.Save(Path.Combine(outDir, filename));
 
             window.Close();
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
         }
 
         SaveControlToPng(loanCard, 800, 320, "review_loan_details.png");

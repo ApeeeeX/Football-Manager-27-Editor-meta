@@ -147,7 +147,7 @@ public sealed class TableLayoutTests : IDisposable
 
         var window = new Window { Width = width, Height = height, Background = UiKit.WindowBg, Content = dock };
         window.Show();
-        Dispatcher.UIThread.RunJobs();
+        AvaloniaTestThread.RunJobs();
         try
         {
             Assert.Equal(ScrollBarVisibility.Disabled, scroll.HorizontalScrollBarVisibility);
@@ -171,7 +171,7 @@ public sealed class TableLayoutTests : IDisposable
         finally
         {
             window.Close();
-            Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
         }
     }
 }

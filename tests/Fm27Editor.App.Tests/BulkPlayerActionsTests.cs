@@ -179,7 +179,7 @@ public sealed class BulkPlayerActionsTests
             window.Show();
             try
             {
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 var realized = grid.GetVisualDescendants()
                     .OfType<DataGridRow>()
                     .Where(r => r.IsVisible && r.DataContext is PlayerRecord)

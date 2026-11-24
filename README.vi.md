@@ -112,7 +112,7 @@ dotnet run --project src/Fm27Editor.App -c Release
 Đóng gói bản macOS NativeAOT `.app` và `.dmg` (`dist/Fm27Editor-mac-arm64.dmg`):
 
 ```bash
-VERSION=1.5.1 scripts/package-mac.sh
+VERSION=1.5.3 scripts/package-mac.sh
 ```
 
 Chạy `Fm27Editor.Tools` khi game đang mở và đã nạp save (lệnh ghi cần cờ `--write`, không có sẽ chỉ in kế hoạch):

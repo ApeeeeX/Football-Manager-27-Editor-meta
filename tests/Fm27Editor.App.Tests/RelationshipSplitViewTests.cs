@@ -32,7 +32,7 @@ public class RelationshipSplitViewTests
             window.Show();
             try
             {
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 var form = liverpool.Detail.TranslatePoint(default, window)!.Value;
                 var table = view.View.GetLogicalDescendants().OfType<DataGrid>().Single();
                 Assert.True(table.Bounds.Width <= 440, $"table is {table.Bounds.Width} wide");
@@ -57,7 +57,7 @@ public class RelationshipSplitViewTests
             window.Show();
             try
             {
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 var box = rival.Detail.GetLogicalDescendants().OfType<TextBox>().Single();
                 box.Text = "77";
                 view.Select(liked);

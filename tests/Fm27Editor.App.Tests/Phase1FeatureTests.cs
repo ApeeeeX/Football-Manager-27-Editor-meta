@@ -26,14 +26,14 @@ public sealed class Phase1FeatureTests : IDisposable
             var input = MainWindow.RatingBox(10, 1, 20, value => draft.Stage(finishing, value), updateAsTyped: true);
             Assert.Equal(79, draft.RecommendedAbility());
             input.Text = "20";
-            Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
             Assert.Equal(99, draft.RecommendedAbility());
             Assert.Equal(50, player.Raw(PlayerAttribute.Finishing));
             input.Text = "201";
-            Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
             Assert.Equal(99, draft.RecommendedAbility());
             input.Text = "10";
-            Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
             Assert.Equal(79, draft.RecommendedAbility());
             Assert.Equal(0, draft.Count);
         });
@@ -63,14 +63,14 @@ public sealed class Phase1FeatureTests : IDisposable
             window.Show();
             try
             {
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 var table = view.GetLogicalDescendants().OfType<DataGrid>().Single();
                 Assert.Equal(2, table.Columns.Count);
                 string?[] Labels() => view.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text).ToArray();
                 Assert.Contains(ScoutingLabels.Attribute(PlayerAttribute.Finishing), Labels());
                 Assert.Contains("18", Labels());
                 table.SelectedItem = table.ItemsSource!.Cast<object>().Last();
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 Assert.Contains(ScoutingLabels.Attribute(PlayerAttribute.Passing), Labels());
                 Assert.Contains("10", Labels());
                 Assert.DoesNotContain(ScoutingLabels.Attribute(PlayerAttribute.Finishing), Labels());

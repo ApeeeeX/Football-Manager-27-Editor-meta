@@ -86,6 +86,25 @@ static class AvaloniaTestThread
         if (startFailure is not null) throw new InvalidOperationException("Avalonia could not be set up for the tests", startFailure);
     }
 
+    /// <summary>Runs queued dispatcher jobs. On the Windows desktop platform a compositor pass can briefly suspend
+    /// dispatcher processing; wait for it to finish, and let a suspension that does not end fail the test.</summary>
+    public static void RunJobs()
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                Dispatcher.UIThread.RunJobs();
+                return;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("processing is suspended", StringComparison.Ordinal) && waited.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                Thread.Sleep(1);
+            }
+        }
+    }
+
     /// <summary>Runs <paramref name="action"/> on the UI thread and rethrows what it throws.</summary>
     public static void Run(Action action)
     {

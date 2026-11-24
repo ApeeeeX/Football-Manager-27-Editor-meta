@@ -112,7 +112,7 @@ dotnet run --project src/Fm27Editor.App -c Release
 To build the self-contained macOS NativeAOT app bundle and disk image (`dist/Fm27Editor-mac-arm64.dmg`):
 
 ```bash
-VERSION=1.5.1 scripts/package-mac.sh
+VERSION=1.5.3 scripts/package-mac.sh
 ```
 
 Run `Fm27Editor.Tools` while the game is open and a save is loaded (write commands require `--write`; otherwise they print their plan):

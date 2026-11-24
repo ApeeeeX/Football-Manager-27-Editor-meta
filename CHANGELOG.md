@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.3
+
+- **Recommended Current Ability:** players and staff now use the game's own calculation. RCA sits left of CA and updates while you type.
+- **Build a Backroom:** choose a team and the Coaching, Recruitment or Medical staff. Coaches are raised in the training areas that team lacks, a rated coach takes set pieces, and CA/PA rise to the new RCA without ever being lowered.
+- **Staff:** Freeze for club staff, including CA, and extra staff allowances for human-managed clubs.
+- **Clubs:** club swap before the first match, bring stadium and facility projects forward, Force Board Request, Team Tactical Understanding with per-bar sliders, and a clearer relationships screen.
+- **Players and managers:** Legend Players, in-match ability editing, and manager unlockables including squad registration and squad numbers anytime.
+- **Faster and steadier:** a reworked load path with lower memory use, and fixes for random Save As and holiday crashes after adding to full game lists.
+- **Interface:** updated tables, section rail and Vietnamese translations.
+
+Not every feature is available on every game build. `releases/1.5.3.md` lists each one by platform.
+
 ## 1.5.2
 
 - **Move to club for staff (Windows, Steam and Game Pass):** a member of staff under contract could not join a club whose

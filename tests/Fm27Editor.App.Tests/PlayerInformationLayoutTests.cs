@@ -244,7 +244,7 @@ public sealed class PlayerInformationLayoutTests : IDisposable
                 Content = page,
             };
             window.Show();
-            Dispatcher.UIThread.RunJobs();
+            AvaloniaTestThread.RunJobs();
             try
             {
                 // Left rail must display all 18 items without triggering a vertical scrollbar or clipping labels.
@@ -287,7 +287,7 @@ public sealed class PlayerInformationLayoutTests : IDisposable
             finally
             {
                 window.Close();
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
             }
         });
     }

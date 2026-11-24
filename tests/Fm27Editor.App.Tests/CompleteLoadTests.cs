@@ -184,13 +184,13 @@ public sealed class CompleteLoadTests
             window.Show();
             try
             {
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 if (!OperatingSystem.IsWindows()) AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
                 var active = TabField<Border>(app, "activeEntityButton");
                 Drag(original[0], original[2], toRight: true);
                 Assert.Equal(new[] { original[1], original[2], original[0] }, strip.Children);
                 Assert.Equal(active, TabField<Border>(app, "activeEntityButton"));
-                Dispatcher.UIThread.RunJobs();
+                AvaloniaTestThread.RunJobs();
                 if (!OperatingSystem.IsWindows()) AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
                 Drag(original[0], original[1], toRight: false);
                 Assert.Equal(original, strip.Children);
@@ -206,7 +206,7 @@ public sealed class CompleteLoadTests
                     for (int frame = 0; frame < 10 && (!Hits(from, Start()) || !Hits(to, End())); frame++)
                     {
                         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-                        Dispatcher.UIThread.RunJobs();
+                        AvaloniaTestThread.RunJobs();
                     }
                     var start = Start();
                     var end = End();
