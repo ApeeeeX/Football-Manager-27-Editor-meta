@@ -54,6 +54,7 @@ internal static class OwnedTransferDeals
             for (int slot = 0; slot < candidateCount; slot++)
             {
                 ulong address = BitConverter.ToUInt64(pointers, slot * 8);
+                if (address == 0 && offset == o.CopyVector) continue;
                 if (address < 0x10000 || (address & 7) != 0 || snapshots.ContainsKey(address) || records.ContainsKey(address)) { invalid = true; break; }
                 var head = new byte[8];
                 if (!scope.Memory.TryRead(address, head)) { unknown = true; continue; }

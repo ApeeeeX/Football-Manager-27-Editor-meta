@@ -46,11 +46,11 @@ public sealed class TableLayoutTests : IDisposable
             grid.Columns.Add(ToolGrid.StarText<StaffSample>("Job", r => r.Job, 1.1, 100, "Job"));
             var nameCol = ToolGrid.StarText<StaffSample>("Name", r => r.Name, 1.4, 120, "Staff name", "#F1F5F9", bold: true);
             grid.Columns.Add(nameCol);
-            grid.Columns.Add(ToolGrid.Number<StaffSample>("Age", r => r.Age.ToString(), 36, "Age"));
+            grid.Columns.Add(ToolGrid.Number<StaffSample>("Age", r => r.Age.ToString(), 56, "Age"));
             grid.Columns.Add(ToolGrid.StarText<StaffSample>("Team", r => r.Team, 0.8, 76, "Team"));
             grid.Columns.Add(ToolGrid.StarText<StaffSample>("Nat", r => r.Nat, 0.85, 80, "Nationality"));
-            grid.Columns.Add(ToolGrid.Number<StaffSample>("CA", r => r.CA.ToString(), 36, "Current Ability"));
-            grid.Columns.Add(ToolGrid.Number<StaffSample>("PA", r => r.PA.ToString(), 36, "Potential Ability"));
+            grid.Columns.Add(ToolGrid.Number<StaffSample>("CA", r => r.CA.ToString(), 48, "Current Ability"));
+            grid.Columns.Add(ToolGrid.Number<StaffSample>("PA", r => r.PA.ToString(), 48, "Potential Ability"));
             grid.Columns.Add(ToolGrid.Number<StaffSample>("Expires", r => r.Expires, 84, "Club contract expiry"));
 
             var toolsCard = UiKit.Card("Tools", new StackPanel
@@ -59,7 +59,7 @@ public sealed class TableLayoutTests : IDisposable
                 Margin = new Thickness(7, 7),
                 Children =
                 {
-                    ToolGrid.ToolButton("Build a Backroom Team", () => { }),
+                    ToolGrid.ToolButton("Build backroom", () => { }, "Build a Backroom Team"),
                     ToolGrid.ToolSectionHeader("CONTRACT"),
                     ToolGrid.ToolButton("Renew for 4 Years", () => { }),
                     ToolGrid.ToolButton("Make it expire", () => { }),
@@ -88,16 +88,16 @@ public sealed class TableLayoutTests : IDisposable
             var grid = ToolGrid.Create();
             grid.ItemsSource = rows;
             ToolGrid.AddTick<SquadSample>(grid, excluded, r => r.Id, () => rows, () => { });
-            grid.Columns.Add(ToolGrid.Number<SquadSample>("#", r => r.Num, 30, "Squad Number"));
-            grid.Columns.Add(ToolGrid.Text<SquadSample>("Inf", r => r.Inf, 40, "Status / Injuries / Bans"));
+            grid.Columns.Add(ToolGrid.Number<SquadSample>("#", r => r.Num, 38, "Squad Number"));
+            grid.Columns.Add(ToolGrid.Text<SquadSample>("Inf", r => r.Inf, 44, "Status / Injuries / Bans"));
             var nameCol = ToolGrid.StarText<SquadSample>("Name", r => r.Name, 1.5, 118, "Player Name", "#F1F5F9", bold: true);
             grid.Columns.Add(nameCol);
             grid.Columns.Add(ToolGrid.StarText<SquadSample>("Pos", r => r.Pos, 0.9, 82, "Positions", "#C4B5FD"));
-            grid.Columns.Add(ToolGrid.StarText<SquadSample>("Nat", r => r.Nat, 0.8, 72, "Nationality"));
-            grid.Columns.Add(ToolGrid.Number<SquadSample>("CA", r => r.CA.ToString(), 36, "Current Ability"));
-            grid.Columns.Add(ToolGrid.Number<SquadSample>("PA", r => r.PA.ToString(), 36, "Potential Ability"));
-            grid.Columns.Add(ToolGrid.Number<SquadSample>("Age", r => r.Age.ToString(), 36, "Age"));
-            grid.Columns.Add(ToolGrid.Number<SquadSample>("Cond", r => r.Cond, 48, "Condition (0–10000)"));
+            grid.Columns.Add(ToolGrid.StarText<SquadSample>("Nat", r => r.Nat, 0.8, 76, "Nationality"));
+            grid.Columns.Add(ToolGrid.Number<SquadSample>("CA", r => r.CA.ToString(), 46, "Current Ability"));
+            grid.Columns.Add(ToolGrid.Number<SquadSample>("PA", r => r.PA.ToString(), 44, "Potential Ability"));
+            grid.Columns.Add(ToolGrid.Number<SquadSample>("Age", r => r.Age.ToString(), 54, "Age"));
+            grid.Columns.Add(ToolGrid.Number<SquadSample>("Cond", r => r.Cond, 74, "Condition (0–10000)"));
             grid.Columns.Add(ToolGrid.Number<SquadSample>("Price", r => r.Price, 86, "Asking Price (£)"));
 
             var toolsCard = UiKit.Card("Presets", new StackPanel

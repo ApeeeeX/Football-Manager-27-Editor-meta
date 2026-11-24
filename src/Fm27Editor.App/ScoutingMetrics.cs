@@ -10,7 +10,7 @@ internal static class ScoutingMetrics
     {
         int rca;
         bool hasRca;
-        RoleScore bestRole;
+        RoleScore bestRole = default!;
         bool hasBestRole;
 
         public int Rca

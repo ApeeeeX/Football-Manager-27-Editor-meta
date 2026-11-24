@@ -308,6 +308,12 @@ public static partial class Loc
         m["Start Steam and Football Manager 27, load your save, then select Load Game. If the game was open, quit it and start it again from Steam."] =
             "Mở Steam và Football Manager 27, tải save rồi chọn Tải dữ liệu Game. Nếu game đang mở, hãy thoát rồi mở lại từ Steam.";
         m["Plugin not set up"] = "Chưa cài được plugin";
+        m["Steam is still running: it rewrites its settings when it quits"] = "Steam vẫn đang chạy. Hãy thoát Steam để ứng dụng không ghi đè cài đặt plugin.";
+        m["The editor's plugin is missing from the app"] = "Không tìm thấy plugin trong gói cài đặt của trình chỉnh sửa.";
+        m["Start Football Manager from Steam once, quit it, then set up again"] = "Mở Football Manager từ Steam một lần, sau đó thoát game và thử cài đặt lại.";
+        m["Football Manager 27 is not in this Steam account's settings"] = "Không tìm thấy Football Manager 27 trong cài đặt của tài khoản Steam này.";
+        m["Steam's settings file ends inside a string"] = "Tệp cài đặt Steam bị thiếu phần cuối của một chuỗi văn bản.";
+        m["Steam's settings file has an unclosed block"] = "Tệp cài đặt Steam có một khối dữ liệu chưa được đóng.";
         m["This game version ({0}) is supported, but no save is loaded yet. Load your save in the game, save it without exiting, then press Load Game again."] =
             "Phiên bản game ({0}) được hỗ trợ, nhưng chưa có file save nào được tải. Hãy mở save trong game, lưu lại không cần thoát, rồi nhấn Tải dữ liệu Game.";
         m["Development speed: removed {0} stale player row(s)."] = "Tốc độ phát triển: đã gỡ {0} cầu thủ cũ không còn hiệu lực.";

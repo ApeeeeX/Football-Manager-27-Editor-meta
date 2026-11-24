@@ -209,7 +209,7 @@ internal sealed class StadiumScreen(IScreenHost host)
         var headerActions = new StackPanel
         {
             Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
-            Children = { UiKit.StatBox("CAP", capText) },
+            Children = { UiKit.StatBox(Loc.S("CAP"), capText) },
         };
         HeaderHost.Content = UiKit.EntityBanner(s.DisplayName, badges, headerActions, Host.Graphics.Image("stadium", s.Id, 72));
 

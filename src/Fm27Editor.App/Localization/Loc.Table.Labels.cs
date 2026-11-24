@@ -354,7 +354,7 @@ public static partial class Loc
 
         // ClubStaffLabels & ClubFieldInfo Sections/Groups/Options/Fields
         m["Job"] = "Công việc";
-        m["Team"] = "Đội bóng";
+        m["Team"] = "Đội";
         m["Current Ability"] = "Khả năng hiện tại";
         m["Information"] = "Thông tin";
         m["Squads"] = "Đội hình";

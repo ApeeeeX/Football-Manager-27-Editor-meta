@@ -50,7 +50,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or InvalidDataException)
         {
-            ShowNotice("Plugin not set up", ex.Message, ("OK", true, null));
+            ShowNotice("Plugin not set up", UserMessage.For(ex), ("OK", true, null));
         }
     }
 }

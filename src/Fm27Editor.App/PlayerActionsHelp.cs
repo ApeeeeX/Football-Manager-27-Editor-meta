@@ -16,7 +16,7 @@ public sealed partial class MainWindow
         ["Undo last release"] = "Puts the last released player back at his club.",
         ["Make Captain"] = "Makes this player the captain of the team he plays in.",
         ["Make Vice Captain"] = "Makes this player the vice captain of the team he plays in.",
-        ["Undo captain change"] = "Puts the previous captain back.",
+        ["Undo captain change"] = "Undo the last captain or vice-captain appointment.",
         ["Heal"] = "Removes injuries and brings fitness and match sharpness back to full.",
         ["Inspire"] = "Makes the player as happy and motivated as possible.",
         ["Destroy"] = "The opposite of Inspire: unhappy, tired and out of form.",

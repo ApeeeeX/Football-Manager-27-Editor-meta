@@ -219,12 +219,12 @@ public sealed partial class MainWindow
         var excluded = new HashSet<ulong>();
         Action? updateSelection = null;
         ToolGrid.AddTick<SquadPlayerRow>(squadGrid, excluded, r => r.Player.Address, () => squadRows, () => updateSelection?.Invoke());
-        squadGrid.Columns.Add(NumCol("#", r => r.DisplayNumber, 30, "Squad Number"));
+        squadGrid.Columns.Add(NumCol("#", r => r.DisplayNumber, 38, "Squad Number"));
 
         squadGrid.Columns.Add(new DataGridTemplateColumn
         {
             Header = Header("Inf", "Status / Injuries / Bans"),
-            Width = new DataGridLength(40),
+            Width = new DataGridLength(44),
             CellTemplate = new FuncDataTemplate<SquadPlayerRow>((row, _) =>
             {
                 var tb = new TextBlock
@@ -248,12 +248,12 @@ public sealed partial class MainWindow
         if (isNation)
             squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Club", r => r.DisplayClub, 1.0, 96, "Club"));
         else
-            squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Nat", r => r.DisplayNat, 0.8, 72, "Nationality"));
+            squadGrid.Columns.Add(ToolGrid.StarText<SquadPlayerRow>("Nat", r => r.DisplayNat, 0.8, 76, "Nationality"));
 
-        squadGrid.Columns.Add(NumCol("CA", r => r.DisplayCa, 36, "Current Ability"));
-        squadGrid.Columns.Add(NumCol("PA", r => r.DisplayPa, 36, "Potential Ability"));
-        squadGrid.Columns.Add(NumCol("Age", r => r.DisplayAge, 36, "Age"));
-        squadGrid.Columns.Add(NumCol("Cond", r => r.DisplayCondition, 48, "Condition (0–10000)"));
+        squadGrid.Columns.Add(NumCol("CA", r => r.DisplayCa, 46, "Current Ability"));
+        squadGrid.Columns.Add(NumCol("PA", r => r.DisplayPa, 44, "Potential Ability"));
+        squadGrid.Columns.Add(NumCol("Age", r => r.DisplayAge, 54, "Age"));
+        squadGrid.Columns.Add(NumCol("Cond", r => r.DisplayCondition, 74, "Condition (0–10000)"));
 
         if (!isNation)
         {

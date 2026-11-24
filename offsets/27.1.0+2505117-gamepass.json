@@ -11,6 +11,23 @@
   "vectorAllocator": { "instanceRva": "0x53F8288", "pools": "0x18", "pooled": "0x34", "header": "0x30", "poolCapacity": "0x74", "poolHeader": "0x78" },
   "retirementManagerRva": "0x53EDBA0",
   "retirementManagerVtable": "0x4BFB820",
+  "inMatch": {
+    "playerVtable": "0x4B81188",
+    "dataVtable": "0x4B81398",
+    "personVtable": "0x4A95638",
+    "playerStaffPersonVtable": "0x4C9F1E8",
+    "data": "0x478",
+    "sourcePerson": "0x28",
+    "personUid": "0xC",
+    "fixture": "0x280",
+    "side": "0x288",
+    "positionBase": "0x480",
+    "attributeBase": "0x48F",
+    "initialCondition": "0x1222",
+    "condition": "0x2168",
+    "liveCondition": "0x2214",
+    "morale": "0x123B"
+  },
   "nationAppointmentVtable": "0x4898018",
   "agreementRegionVtable": "0x4B2A118",
   "agreementVtable": "0x4A1C378",
@@ -356,7 +373,8 @@
       "bClubMoveVtable": "0x4A27C38",
       "managerRva": "0x53E9860",
       "managerVtable": "0x4A26DE8",
-      "offerVector": "0x20"
+      "offerVector": "0x20",
+      "copyVector": "0x38"
     },
     "futureTransfers": {
       "playerOffers": "0x328",

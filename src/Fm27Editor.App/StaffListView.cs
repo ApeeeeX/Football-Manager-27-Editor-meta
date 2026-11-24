@@ -69,11 +69,11 @@ public sealed partial class MainWindow
         ToolGrid.AddTick<StaffListRow>(grid, excluded, r => r.Staff.Address, () => rows, () => updateCount?.Invoke());
         grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Job", r => r.Job, 1.1, 100, "Job"));
         grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Name", r => r.Name, 1.4, 120, "Staff name", "#F1F5F9", bold: true));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("Age", r => r.Age?.ToString(CultureInfo.InvariantCulture) ?? "", 36, "Age"));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("Age", r => r.Age?.ToString(CultureInfo.InvariantCulture) ?? "", 56, "Age"));
         grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Team", r => r.Team, 0.8, 76, "Team"));
         grid.Columns.Add(ToolGrid.StarText<StaffListRow>("Nat", r => r.Nation, 0.85, 80, "Nationality"));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("CA", r => r.CA.ToString(CultureInfo.InvariantCulture), 36, "Current Ability"));
-        grid.Columns.Add(ToolGrid.Number<StaffListRow>("PA", r => r.PA.ToString(CultureInfo.InvariantCulture), 36, "Potential Ability"));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("CA", r => r.CA.ToString(CultureInfo.InvariantCulture), 48, "Current Ability"));
+        grid.Columns.Add(ToolGrid.Number<StaffListRow>("PA", r => r.PA.ToString(CultureInfo.InvariantCulture), 48, "Potential Ability"));
         grid.Columns.Add(ToolGrid.Number<StaffListRow>("Expires", r => r.Expires, 84, scope.Name == "Club" ? "Club contract expiry" : "National contract expiry"));
         var keys = new Dictionary<string, Func<StaffListRow, IComparable?>>
         {
@@ -95,7 +95,7 @@ public sealed partial class MainWindow
         var count = new TextBlock { FontSize = 12, Foreground = UiKit.Brush("#94A3B8"), Margin = new Thickness(1, -2, 0, 4) };
         StaffRecord[] Chosen() => rows.Where(r => !excluded.Contains(r.Staff.Address)).Select(r => r.Staff).ToArray();
         Button? backroom = club is { } clubAddress
-            ? ToolGrid.ToolButton("Build a Backroom Team", () => _ = ShowBackroomTeamAsync(clubAddress, Chosen(), refresh))
+            ? ToolGrid.ToolButton("Build backroom", () => _ = ShowBackroomTeamAsync(clubAddress, Chosen(), refresh), "Build a Backroom Team")
             : null;
         updateCount = () =>
         {

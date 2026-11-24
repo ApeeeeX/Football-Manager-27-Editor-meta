@@ -211,7 +211,16 @@ internal static class ToolGrid
     public static Action AddTick<T>(DataGrid grid, HashSet<ulong> excluded, Func<T, ulong> key, Func<IEnumerable<T>> rows, Action changed) where T : class
     {
         var syncs = new List<Action>();
-        var all = new CheckBox { IsChecked = true, MinWidth = 0, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0) };
+        const double tickColumnWidth = 36;
+        CheckBox TickBox() => new()
+        {
+            MinWidth = 0,
+            Padding = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var all = TickBox();
+        all.IsChecked = true;
         bool syncingHeader = false;
         void Changed()
         {
@@ -235,11 +244,13 @@ internal static class ToolGrid
         grid.Columns.Add(new DataGridTemplateColumn
         {
             Header = all,
-            Width = new DataGridLength(30),
+            Width = new DataGridLength(tickColumnWidth),
+            MinWidth = tickColumnWidth,
+            CanUserResize = false,
             CanUserSort = false,
             CellTemplate = new FuncDataTemplate<T>((row, _) =>
             {
-                var box = new CheckBox { MinWidth = 0, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                var box = TickBox();
                 bool syncing = false;
                 void Sync() { syncing = true; box.IsChecked = !excluded.Contains(key(row)); syncing = false; }
                 Sync();

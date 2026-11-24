@@ -13,7 +13,7 @@ public sealed partial class MainWindow
     sealed record RoleScoreRow(
         string Code,
         string Name,
-        string Group,
+        RoleGroup Group,
         double Score,
         string ScoreText,
         string PrimaryText,
@@ -118,7 +118,7 @@ public sealed partial class MainWindow
         table.Height = 460;
         table.Columns.Add(ToolGrid.Text<RoleScoreRow>("Code", r => r.Code, 84, "Role short code", "#E2E8F0", bold: true));
         table.Columns.Add(ToolGrid.Text<RoleScoreRow>("Role", r => r.Name, 230, "Full role and duty name", "#CBD5E1"));
-        table.Columns.Add(ToolGrid.Text<RoleScoreRow>("Group", r => r.Group, 95, "Tactical position group", "#94A3B8"));
+        table.Columns.Add(ToolGrid.Text<RoleScoreRow>("Group", r => Loc.S(r.Group.ToString()), 95, "Tactical position group", "#94A3B8"));
         table.Columns.Add(new DataGridTemplateColumn
         {
             Header = ToolGrid.Header("Score", "Role suitability score (0 - 100%)", HorizontalAlignment.Right),
@@ -140,14 +140,14 @@ public sealed partial class MainWindow
         {
             ["Code"] = r => r.Code,
             ["Role"] = r => r.Name,
-            ["Group"] = r => r.Group,
+            ["Group"] = r => Loc.S(r.Group.ToString()),
             ["Score"] = r => r.Score,
         });
 
         var allRows = allScores.Select(s => new RoleScoreRow(
             s.Role.Code,
             ScoutingLabels.Role(s.Role.Name),
-            s.Role.Group.ToString(),
+            s.Role.Group,
             s.Score,
             s.Score.ToString("0.0", InvCulture) + "%",
             string.Join(", ", s.Role.Primary.Select(ScoutingLabels.Attribute)),
@@ -157,7 +157,7 @@ public sealed partial class MainWindow
         {
             string? needle = string.IsNullOrWhiteSpace(filterBox.Text) ? null : filterBox.Text.Trim();
             var filtered = allRows.Where(r =>
-                (activeGroup is null || r.Group == activeGroup.Value.ToString())
+                (activeGroup is null || r.Group == activeGroup.Value)
                 && (needle is null
                     || r.Code.Contains(needle, StringComparison.OrdinalIgnoreCase)
                     || r.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
@@ -168,14 +168,17 @@ public sealed partial class MainWindow
             countLabel.Text = Loc.F("{0} / {1} roles", filtered.Count, allRows.Count);
         }
 
+        string GroupLabel(string label, RoleGroup group) =>
+            $"{Loc.S(label)} ({allRows.Count(r => r.Group == group)})";
+
         var groupOptions = new (string Label, RoleGroup? Group)[]
         {
-            (Loc.F($"All ({allRows.Count})"), null),
-            (Loc.F($"GK ({allRows.Count(r => r.Group == nameof(RoleGroup.Goalkeeper))})"), RoleGroup.Goalkeeper),
-            ($"Def ({allRows.Count(r => r.Group == nameof(RoleGroup.Defence))})", RoleGroup.Defence),
-            ($"Mid ({allRows.Count(r => r.Group == nameof(RoleGroup.Midfield))})", RoleGroup.Midfield),
-            ($"Wing ({allRows.Count(r => r.Group == nameof(RoleGroup.Wing))})", RoleGroup.Wing),
-            ($"Att ({allRows.Count(r => r.Group == nameof(RoleGroup.Attack))})", RoleGroup.Attack),
+            ($"{Loc.S("All")} ({allRows.Count})", null),
+            (GroupLabel("GK", RoleGroup.Goalkeeper), RoleGroup.Goalkeeper),
+            (GroupLabel("Def", RoleGroup.Defence), RoleGroup.Defence),
+            (GroupLabel("Mid", RoleGroup.Midfield), RoleGroup.Midfield),
+            (GroupLabel("Wing", RoleGroup.Wing), RoleGroup.Wing),
+            (GroupLabel("Att", RoleGroup.Attack), RoleGroup.Attack),
         };
         var tabs = UiKit.OptionTabs(
             groupOptions.Select(o => (o.Label, (Control)new Panel())).ToList(),

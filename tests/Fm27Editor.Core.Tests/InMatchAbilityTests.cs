@@ -113,21 +113,23 @@ public class InMatchAbilityTests
         Assert.Equal(profile.InMatch, OffsetProfile.Load(profile.ToJson()).InMatch);
     }
 
-    [Fact]
-    public void Windows_steam_profile_reads_live_condition_from_active_replica_and_updates_active_slots()
+    [Theory]
+    [InlineData("27.1.0+2505117-steam")]
+    [InlineData("27.1.0+2505117-gamepass")]
+    public void Windows_profile_reads_live_condition_from_active_replica_and_updates_active_slots(string build)
     {
-        var profile = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", "27.1.0+2505117-steam.json"));
+        var profile = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", build + ".json"));
         var im = Assert.IsType<InMatchOffsets>(profile.InMatch);
         Assert.NotNull(im.LiveCondition);
         Assert.Equal(im, OffsetProfile.Load(profile.ToJson()).InMatch);
 
-        var (editor, players, copies) = BuildSteamFixture(profile, replicaCount: 4);
+        var (editor, players, copies) = BuildWindowsFixture(profile, replicaCount: 4);
         var match = Assert.Single(editor.FindFixtures(players));
         var values = editor.ReadPlayers(match);
         Assert.Equal(75, values[1].ConditionPercent);
         Assert.Equal(20, values[1].Morale);
 
-        var (kickoffEditor, kickoffPlayers, _) = BuildSteamFixture(profile, replicaCount: 2);
+        var (kickoffEditor, kickoffPlayers, _) = BuildWindowsFixture(profile, replicaCount: 2);
         var kickoffMatch = Assert.Single(kickoffEditor.FindFixtures(kickoffPlayers));
         var kickoffValues = kickoffEditor.ReadPlayers(kickoffMatch);
         Assert.Equal(81, kickoffValues[1].ConditionPercent);
@@ -147,7 +149,7 @@ public class InMatchAbilityTests
         }
     }
 
-    static (InMatchAbility Editor, List<PlayerRecord> Players, byte[,][] Copies) BuildSteamFixture(OffsetProfile profile, int replicaCount)
+    static (InMatchAbility Editor, List<PlayerRecord> Players, byte[,][] Copies) BuildWindowsFixture(OffsetProfile profile, int replicaCount)
     {
         var im = profile.InMatch!;
         uint playerVt = profile.PlayerVtableRvas[0];

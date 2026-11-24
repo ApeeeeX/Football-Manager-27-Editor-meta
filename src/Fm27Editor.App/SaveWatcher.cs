@@ -149,6 +149,13 @@ public sealed partial class MainWindow
     /// <summary>A small modeless window with a message and buttons, in the same style as the other prompts.</summary>
     Window ShowNotice(string title, string message, params (string Label, bool Accent, Func<Task>? Click)[] buttons)
     {
+        var dialog = CreateNotice(title, message, buttons);
+        dialog.Show(this);
+        return dialog;
+    }
+
+    static Window CreateNotice(string title, string message, params (string Label, bool Accent, Func<Task>? Click)[] buttons)
+    {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
         var dialog = new Window
         {
@@ -167,7 +174,6 @@ public sealed partial class MainWindow
             button.Click += async (_, _) => { dialog.Close(); if (click is not null) await click(); };
             row.Children.Add(button);
         }
-        dialog.Show(this);
         return dialog;
     }
 

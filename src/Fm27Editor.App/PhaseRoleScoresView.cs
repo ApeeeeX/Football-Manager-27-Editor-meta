@@ -120,7 +120,7 @@ public sealed partial class MainWindow
             grid.Height = 300;
             grid.VerticalAlignment = VerticalAlignment.Top;
             grid.Columns.Add(ToolGrid.StarText<PhaseRoleRow>("Role", r => r.Name, 1, 105, "Role"));
-            grid.Columns.Add(ToolGrid.Number<PhaseRoleRow>("Score", r => r.Score is { } v ? v.ToString("0.0", Loc.FormatCulture) + "%" : "—", 72, "Score"));
+            grid.Columns.Add(ToolGrid.Number<PhaseRoleRow>("Score", r => r.Score is { } v ? v.ToString("0.0", Loc.FormatCulture) + "%" : "—", 72, "Role suitability score (0 - 100%)"));
             var rows = catalog.At(position, phase).Select(role => new PhaseRoleRow(
                 role, Loc.S(ContractLabels.Spaced(role.Id)), catalog.Score(attributes, scale, position, familiarity, role)))
                 .OrderByDescending(r => r.Score).ToArray();

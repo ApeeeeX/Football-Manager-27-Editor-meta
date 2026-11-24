@@ -5,6 +5,24 @@ public static partial class Loc
     static partial void RegisterEntities(Dictionary<string, string> m)
     {
         m["Build a Backroom Team"] = "Nâng cấp đội ngũ hỗ trợ";
+        m["Build backroom"] = "Nâng cấp ban hỗ trợ";
+        m["Additional Staff (Experimental)"] = "Bổ sung nhân sự (thử nghiệm)";
+        m["Extra staff slots added on top of the club's base allowance. Values outside the allowed range are clamped."] = "Số suất thêm ngoài định mức của CLB. Giá trị vượt phạm vi sẽ được đưa về mức gần nhất.";
+        m["Extra staff allowances are available only for human-managed clubs."] = "Chỉ có thể bổ sung suất nhân sự cho CLB do người chơi quản lý.";
+        m["Enter valid extra staff allowance numbers within their range."] = "Nhập số suất nhân sự bổ sung trong phạm vi cho phép.";
+        m["Main Team"] = "Đội một";
+        m["Coaches"] = "HLV";
+        m["Physios"] = "Chuyên viên vật lý trị liệu";
+        m["Sports Scientists"] = "Chuyên viên khoa học thể thao";
+        m["Performance Analysts"] = "Chuyên viên phân tích thi đấu";
+        m["Scouts"] = "Tuyển trạch viên";
+        m["Recruitment Analysts"] = "Chuyên viên phân tích tuyển trạch";
+        m["Staff name"] = "Tên nhân sự";
+        m["Club contract expiry"] = "Ngày hết hạn hợp đồng CLB";
+        m["National contract expiry"] = "Ngày hết hạn hợp đồng ĐTQG";
+        m["Refresh"] = "Tải lại";
+        m["REP"] = "Danh tiếng";
+        m["CAP"] = "Sức chứa";
         m["All departments"] = "Tất cả bộ phận";
         m["Recruitment"] = "Tuyển trạch";
         m["Medical"] = "Y tế";
@@ -140,6 +158,21 @@ public static partial class Loc
         m["Min PA"] = "PA tối thiểu";
         m["Max Age"] = "Tuổi tối đa";
         m["Recommended Current Ability"] = "Năng lực hiện tại khuyến nghị";
+        m["Position RCA (rating >= 12): "] = "RCA theo vị trí (độ thuần thục từ 12): ";
+        m["Filter roles (e.g. BPD, Pressing, Keeper)..."] = "Lọc vai trò (vd. BPD, pressing, thủ môn)…";
+        m["Code"] = "Mã";
+        m["Group"] = "Nhóm";
+        m["Score"] = "Điểm";
+        m["Role short code"] = "Mã viết tắt của vai trò";
+        m["Full role and duty name"] = "Tên đầy đủ của vai trò và nhiệm vụ";
+        m["Tactical position group"] = "Nhóm vị trí chiến thuật";
+        m["Role suitability score (0 - 100%)"] = "Điểm phù hợp với vai trò (0–100%)";
+        m["Defence"] = "Phòng ngự";
+        m["Midfield"] = "Tiền vệ";
+        m["Wing"] = "Cánh";
+        m["Def"] = "HV";
+        m["Mid"] = "TV";
+        m["Att"] = "TĐ";
         m["No qualified role available for RCA"] = "Không có vai trò đủ điều kiện để tính RCA";
         m["Required staff attributes are unavailable"] = "Thiếu chỉ số nhân sự cần thiết";
         m["Stored staff attributes are unavailable"] = "Không đọc được chỉ số gốc của nhân sự này";

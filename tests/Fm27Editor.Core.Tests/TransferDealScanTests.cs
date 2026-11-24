@@ -123,10 +123,13 @@ public sealed class TransferDealScanTests
         Assert.Equal(1, memory.Enumerations);
     }
 
-    [Fact]
-    public void Owned_transfer_deals_accepts_verified_empty_copy_vector_and_rejects_unverified_empty()
+    [Theory]
+    [InlineData("27.1.0+2505117-steam", false)]
+    [InlineData("27.1.0+2505117-gamepass", false)]
+    [InlineData("27.1.0+2505117-gamepass", true)]
+    public void Owned_transfer_deals_require_a_verified_slot_for_empty_or_sparse_copies(string build, bool sparse)
     {
-        var profile = Profile("27.1.0+2505117-steam");
+        var profile = Profile(build);
         var p = profile.Proposals!;
         Assert.Equal(0x38, p.CopyVector);
         Assert.Equal(0x38, OffsetProfile.Load(profile.ToJson()).Proposals!.CopyVector);
@@ -149,7 +152,22 @@ public sealed class TransferDealScanTests
         BitConverter.GetBytes(Module + p.TransferVtable).CopyTo(offerBytes, 0);
         BitConverter.GetBytes(0).CopyTo(offerBytes, p.Id);
 
-        Assert.Equal(new[] { offer }, new TransferDealReader(mem, profile, Module).TryReadOwnedCandidates());
+        ulong copy = 0x30_0000;
+        if (sparse)
+        {
+            // A Game Pass save had one offer copy followed by two null slots in the copy vector.
+            const ulong copyVector = 0x17_0000;
+            const ulong person = 0x40_0000;
+            BitConverter.GetBytes(copyVector).CopyTo(mgrBytes, 0x38);
+            BitConverter.GetBytes(copyVector + 24).CopyTo(mgrBytes, 0x40);
+            BitConverter.GetBytes(copyVector + 24).CopyTo(mgrBytes, 0x48);
+            BitConverter.GetBytes(copy).CopyTo(mem.Map(copyVector, 24), 0);
+            BitConverter.GetBytes(person).CopyTo(offerBytes, 0x38);
+            offerBytes.CopyTo(mem.Map(copy, offerBytes.Length), 0);
+        }
+
+        ulong[] expected = sparse ? [offer, copy] : [offer];
+        Assert.Equal(expected, new TransferDealReader(mem, profile, Module).TryReadOwnedCandidates());
 
         var doc = System.Text.Json.Nodes.JsonNode.Parse(profile.ToJson())!;
         doc["player"]!["proposals"]!["copyVector"] = null;

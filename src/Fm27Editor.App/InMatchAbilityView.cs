@@ -79,6 +79,8 @@ public sealed partial class MainWindow
         condition.Width = 70;
         var morale = MatchNumber(1, 20, "Optional");
         morale.Width = 70;
+        ToolTip.SetTip(condition, Loc.S("Leave blank to keep the current value."));
+        ToolTip.SetTip(morale, Loc.S("Leave blank to keep the current value."));
 
         Control Group(AttributeGroup group) => AttributeCard(group.ToString(), ratings
             .Where(pair => PlayerAttributeInfo.GroupOf(pair.Key) == group)
@@ -157,13 +159,17 @@ public sealed partial class MainWindow
         Action syncTicks = ToolGrid.AddTick<InMatchMember>(roster, excluded, MemberKey, () => members, SelectionChanged);
         roster.Columns.Add(ToolGrid.Text<InMatchMember>("Player", row => row.Player.DisplayName, 0, "Player", minWidth: 94));
         roster.Columns.Add(ToolGrid.Text<InMatchMember>("Team", row => row.Side.DisplayName, 73, "Team"));
-        roster.Columns.Add(ToolGrid.Number<InMatchMember>("Condition", row =>
-            ReadCondition(row) is { } percent ? $"{percent}%" : "", 67, "Condition (%)"));
+        const string conditionHeader = "Cond.";
+        const double conditionColumnWidth = 84;
+        var conditionColumn = ToolGrid.Number<InMatchMember>(conditionHeader, row =>
+            ReadCondition(row) is { } percent ? $"{percent}%" : "", conditionColumnWidth, "Condition (%)");
+        conditionColumn.MinWidth = conditionColumnWidth;
+        roster.Columns.Add(conditionColumn);
         ToolGrid.EnableSort(roster, new Dictionary<string, Func<InMatchMember, IComparable?>>
         {
             ["Player"] = row => row.Player.DisplayName,
             ["Team"] = row => row.Side.DisplayName,
-            ["Condition"] = row => ReadCondition(row),
+            [conditionHeader] = row => ReadCondition(row),
         });
 
         int? ReadCondition(InMatchMember row) => values.GetValueOrDefault(row.Player.Id!.Value)?.ConditionPercent;
@@ -316,7 +322,14 @@ public sealed partial class MainWindow
                 status.Text = notice.Text;
             }
             catch (OperationCanceledException) { }
-            catch (StaleObjectException) { notice.Text = Loc.S("The match changed. Pause it and scan again."); }
+            catch (StaleObjectException) when (!cancellation.IsCancellationRequested && CurrentSave())
+            {
+                const string message = "Pause the match in FM, select Scan matches, then try again.";
+                notice.Text = Loc.S(message);
+                var warning = CreateNotice("Match edit not applied", message, ("OK", true, null));
+                warning.ShowActivated = true;
+                await warning.ShowDialog(window);
+            }
             catch (Exception ex) { notice.Text = UserMessage.For(ex); }
             finally { writing = busy = false; Refresh(); }
         }

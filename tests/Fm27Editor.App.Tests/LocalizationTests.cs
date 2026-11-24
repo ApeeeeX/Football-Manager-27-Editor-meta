@@ -38,6 +38,22 @@ public sealed class LocalizationTests : IDisposable
         Assert.Equal("Players", Loc.S("Players"));
     }
 
+    [Theory]
+    [InlineData("Cond", "Thể lực", "Condition (0–10000)", "Thể lực (0–10000)")]
+    [InlineData("Nat", "Q. tịch", "Nationality", "Quốc tịch")]
+    [InlineData("Ht.", "Cao", "Height (cm)", "Chiều cao (cm)")]
+    [InlineData("Build backroom", "Nâng cấp ban hỗ trợ", "Build a Backroom Team", "Nâng cấp đội ngũ hỗ trợ")]
+    public void Compact_labels_keep_the_full_tooltip_in_vietnamese(
+        string label, string vietnameseLabel, string tooltip, string vietnameseTooltip)
+    {
+        LanguageSetting.Set(AppLanguage.Vietnamese);
+
+        var header = ToolGrid.Header(label, tooltip);
+
+        Assert.Equal(vietnameseLabel, Assert.IsType<Avalonia.Controls.TextBlock>(header).Text);
+        Assert.Equal(vietnameseTooltip, Avalonia.Controls.ToolTip.GetTip(header));
+    }
+
     [Fact]
     public void Language_setting_persists_choice_and_defaults_to_english_when_missing()
     {

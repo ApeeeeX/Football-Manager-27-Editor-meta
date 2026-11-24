@@ -70,7 +70,7 @@ internal sealed class AwardScreen(IScreenHost host)
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
-            Children = { UiKit.StatBox("REP", repText) },
+            Children = { UiKit.StatBox(Loc.S("REP"), repText) },
         };
         HeaderHost.Content = UiKit.EntityBanner(a.DisplayName, badges, actions, Host.Graphics.Image("award", a.Id, 72));
 
