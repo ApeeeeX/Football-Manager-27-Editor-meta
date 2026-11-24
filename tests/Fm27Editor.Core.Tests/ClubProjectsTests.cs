@@ -585,4 +585,144 @@ public class ClubProjectsTests
         TestWorld.Set64(tableBytes, layout.Vector, header);
         memory.Map(header, 24);
     }
+
+    [Theory]
+    [InlineData("27.1.0+2505117-gamepass.json")]
+    [InlineData("27.1.0+2505117-steam.json")]
+    public void Finishes_an_announced_stadium_expansion_by_appending_a_row_due_today(string build)
+    {
+        var installed = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", build));
+        var profile = OffsetProfile.Load(installed.ToJson());
+        var layout = profile.Club!.Projects!;
+        var expansions = layout.Expansions;
+        var rowShape = expansions.NewRow!;
+        var requestsLayout = layout.BoardRequests!;
+        var changesLayout = layout.StadiumChanges!;
+        var lists = profile.Club.Lists!;
+        var stadiumLayout = profile.Stadium!;
+        var memory = new FakeMemory();
+        const ulong module = TestWorld.ModuleBase;
+        const ulong clubAddress = 0x6200_0000, otherClub = 0x6200_1000, finance = 0x6201_0000;
+        const ulong team = 0x6202_0000, teamSlots = 0x6203_0000, details = 0x6204_0000, holder = 0x6205_0000;
+        const ulong requests = 0x6206_0000, requestSlots = 0x6207_0000, requestRow = 0x6208_0000;
+        const ulong expansionVector = 0x6209_0000, expansionSlots = 0x620A_0000, templateRow = 0x620B_0000;
+        const ulong home = 0x620C_0000, otherStadium = 0x620D_0000, empty = 0x620E_0000;
+        const ulong table = 0x620F_0000, allocatedBlock = 0x6230_0000;
+
+        var firstTeam = new TeamEntry(team, clubAddress, 0, 0, 0, true);
+        var club = new ClubEntry(clubAddress, 680, "Manchester United", null, 0, [firstTeam]);
+        var clubBytes = memory.Map(clubAddress, Math.Max(lists.Teams + 24, profile.Club.Id!.Value + 4));
+        TestWorld.Set64(clubBytes, 0, module + profile.Club.ClubVtableRva);
+        BitConverter.GetBytes(680).CopyTo(clubBytes, profile.Club.Id.Value);
+        Vector(clubBytes, lists.Teams, teamSlots, team);
+
+        var teamBytes = memory.Map(team, Math.Max(lists.TeamDetails + 8, profile.Competition!.ClubSwap!.TeamStadium + 8));
+        TestWorld.Set64(teamBytes, 0, module + profile.Team!.VtableRva);
+        TestWorld.Set64(teamBytes, profile.Competition.ClubSwap.TeamStadium, home);
+        TestWorld.Set64(teamBytes, lists.TeamDetails, details);
+        TestWorld.Set64(memory.Map(details, lists.Vision + 8), lists.Vision, holder);
+
+        var holderBytes = memory.Map(holder, Math.Max(requestsLayout.HolderType + 1, requestsLayout.Requests + 8));
+        TestWorld.Set64(holderBytes, 0, module + lists.VisionHolderVtable);
+        holderBytes[requestsLayout.HolderType] = 3;
+        TestWorld.Set64(holderBytes, requestsLayout.Requests, requests);
+
+        var board = memory.Map(requests, requestsLayout.Vector + 24);
+        Vector(board, requestsLayout.Vector, requestSlots, requestRow);
+        var reqBytes = memory.Map(requestRow, Math.Max(requestsLayout.Flags + 1, requestsLayout.RequestType + 2));
+        BitConverter.GetBytes(0x07EB00D4u).CopyTo(reqBytes, requestsLayout.TargetDate);     // 31 Jul 2027
+        BitConverter.GetBytes(0x076C0001u).CopyTo(reqBytes, requestsLayout.CompletedDate);  // None
+        BitConverter.GetBytes((ushort)3000).CopyTo(reqBytes, requestsLayout.RequestType);   // Expand stadium
+        reqBytes[requestsLayout.Flags] = 0;
+
+        var homeBytes = memory.Map(home, 0xC0);
+        TestWorld.Set64(homeBytes, 0, module + stadiumLayout.VtableRva);
+        TestWorld.Set64(homeBytes, stadiumLayout.Owner, clubAddress);
+        BitConverter.GetBytes(74879).CopyTo(homeBytes, stadiumLayout.Fields[Fm27Editor.Core.Stadiums.StadiumField.Capacity].Path[^1]);
+        BitConverter.GetBytes(74879).CopyTo(homeBytes, stadiumLayout.Fields[Fm27Editor.Core.Stadiums.StadiumField.SeatingCapacity].Path[^1]);
+        BitConverter.GetBytes(95285).CopyTo(homeBytes, stadiumLayout.Fields[Fm27Editor.Core.Stadiums.StadiumField.ExpansionCapacity].Path[^1]);
+        TestWorld.Set64(memory.Map(otherStadium, 8), 0, module + stadiumLayout.VtableRva);
+
+        TestWorld.Set64(memory.Map(module + layout.ManagerRoot, 8), 0, finance);
+        var manager = memory.Map(finance, 0x40);
+        TestWorld.Set64(manager, 0, module + layout.ManagerVtable);
+        memory.Map(empty, 24);
+        TestWorld.Set64(manager, layout.Upgrades.Vector, empty);
+        TestWorld.Set64(manager, layout.StadiumPlans!.Value, empty);
+        TestWorld.Set64(manager, expansions.Vector, expansionVector);
+
+        var expQueueBytes = memory.Map(expansionVector, 24);
+        TestWorld.Set64(expQueueBytes, 0, expansionSlots);
+        TestWorld.Set64(expQueueBytes, 8, expansionSlots + 8);
+        TestWorld.Set64(expQueueBytes, 16, expansionSlots + 16); // one spare slot
+        var expSlotsBytes = memory.Map(expansionSlots, 16);
+        TestWorld.Set64(expSlotsBytes, 0, templateRow);
+
+        var templateBytes = memory.Map(templateRow, rowShape.Size);
+        TestWorld.Set64(templateBytes, expansions.Club, otherClub);
+        TestWorld.Set64(templateBytes, expansions.Stadium!.Value, otherStadium);
+        BitConverter.GetBytes(0x07EB12F4u).CopyTo(templateBytes, expansions.Date); // non-zero flags 0x1200 to verify preservation
+        BitConverter.GetBytes(0x076C0001u).CopyTo(templateBytes, rowShape.StartDate);
+
+        TestWorld.Set64(memory.Map(module + changesLayout.TableRoot, 8), 0, table);
+        var tableBytes = memory.Map(table, changesLayout.Vector + 8);
+        TestWorld.Set64(tableBytes, 0, module + changesLayout.TableVtable);
+        TestWorld.Set64(tableBytes, changesLayout.Vector, empty);
+
+        MapClock(profile.GameDate!.Primary, 0x6220_0000);
+        if (profile.GameDate.CrossCheck is { } crossCheck) MapClock(crossCheck, 0x6221_0000);
+
+        var projects = new ClubProjects(memory, profile, module);
+        Assert.True(projects.CanFinishAnnounced);
+        var before = projects.ReadOverview(club);
+        var today = new DateOnly(2026, 12, 20);
+        Assert.Equal(today, before.Today);
+        Assert.Equal(new DateOnly(2027, 7, 31), before.AnnouncedExpansionDate);
+        Assert.Empty(before.Scheduled);
+
+        int allocatedSize = 0;
+        byte[]? writtenRow = null;
+        projects.FinishAnnouncedExpansion(club, today, size =>
+        {
+            allocatedSize = size;
+            writtenRow = memory.Map(allocatedBlock, size);
+            return allocatedBlock;
+        });
+
+        Assert.Equal(0x40, rowShape.Size);
+        Assert.Equal(rowShape.Size, allocatedSize);
+        Assert.Equal(expansionSlots + 16, BitConverter.ToUInt64(expQueueBytes, 8));
+        Assert.Equal(allocatedBlock, BitConverter.ToUInt64(expSlotsBytes, 8));
+        Assert.NotNull(writtenRow);
+        uint expectedDate = 0x1200u | (uint)today.DayOfYear | ((uint)today.Year << 16);
+        Assert.Equal(clubAddress, BitConverter.ToUInt64(writtenRow!, expansions.Club));
+        Assert.Equal(home, BitConverter.ToUInt64(writtenRow!, expansions.Stadium.Value));
+        Assert.Equal(expectedDate, BitConverter.ToUInt32(writtenRow!, expansions.Date));
+        Assert.Equal(expectedDate, BitConverter.ToUInt32(writtenRow!, rowShape.StartDate));
+        Assert.Equal(20406, BitConverter.ToInt32(writtenRow!, rowShape.AddedSeats));
+        Assert.Equal(74879, BitConverter.ToInt32(writtenRow!, rowShape.Capacity));
+        Assert.Equal(74879, BitConverter.ToInt32(writtenRow!, rowShape.SeatingCapacity));
+
+        var after = projects.ReadOverview(club);
+        Assert.Null(after.AnnouncedExpansionDate);
+        var scheduled = Assert.Single(after.Scheduled);
+        Assert.Equal(ClubProjectKind.StadiumExpansion, scheduled.Kind);
+        Assert.Equal(today, scheduled.ScheduledDate);
+
+        void Vector(byte[] owner, int vectorOffset, ulong slots, ulong item)
+        {
+            TestWorld.Set64(owner, vectorOffset, slots);
+            TestWorld.Set64(owner, vectorOffset + 8, slots + 8);
+            TestWorld.Set64(owner, vectorOffset + 16, slots + 8);
+            TestWorld.Set64(memory.Map(slots, 8), 0, item);
+        }
+
+        void MapClock(DateChain chain, ulong address)
+        {
+            TestWorld.Set64(memory.Map(module + chain.RootRva, 8), 0, address);
+            var dateObject = memory.Map(address, chain.DateOffset + 4);
+            TestWorld.Set64(dateObject, 0, module + chain.ObjectVtableRva!.Value);
+            BitConverter.GetBytes(0x07EA0162u).CopyTo(dateObject, chain.DateOffset); // 20 Dec 2026
+        }
+    }
 }

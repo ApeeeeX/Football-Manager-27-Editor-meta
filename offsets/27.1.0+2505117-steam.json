@@ -458,7 +458,7 @@
       "boardRequests": { "holderType": "0x74", "requests": "0x78", "vector": "0x18", "type": "0x13C", "flags": "0x140", "targetDate": "0x12C", "completedDate": "0x130" },
       "managerRoot": "0x587C600",
       "managerVtable": "0x4EF65F0",
-      "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8" },
+      "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8", "newRow": { "size": "0x40", "startDate": "0x1C", "addedSeats": "0x20", "capacity": "0x30", "seatingCapacity": "0x34" } },
       "upgrades": { "vector": "0x20", "club": "0x8", "date": "0x10", "vtable": "0x4C9BE18" },
       "stadiumChanges": { "tableRoot": "0x587B840", "tableVtable": "0x4DE8EE8", "vector": "0x80", "vtable": "0x5053058", "stadium": "0x20", "date": "0x34" }
     },

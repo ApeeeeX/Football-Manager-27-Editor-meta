@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.4
+
+- **Club swap:** says why two clubs cannot be swapped (season started, other country, same division, no senior team, no table, points adjustment) as soon as a club is chosen, and a failed swap leaves only Close. A table row whose club name is still empty no longer blocks the swap.
+- **In-match condition on Mac:** changing a player's condition during a match now takes effect on Steam macOS and FM Touch.
+- **Destroy:** also drops Tactical Understanding to its minimum, for the whole team in a match and for a single player; it stays after the match and can be undone.
+- **Club projects:** hidden on every platform for now. It returns when a new ground can be finished from Planning.
+- **Steadier loading:** the memory clean-up after loading no longer fails.
+
 ## 1.5.3
 
 - **Recommended Current Ability:** players and staff now use the game's own calculation. RCA sits left of CA and updates while you type.
