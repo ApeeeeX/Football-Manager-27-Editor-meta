@@ -199,6 +199,7 @@ public static class NewBuildDiscoverer
         }
         ProbePeCodeSignatures(image, memory, game.ModuleBase, provisional, working, rawBase, discoveredRootPaths, structuralOverrides, items);
         ProbeArm64CodeSignatures(memory, game.ModuleBase, (ulong)game.ModuleSize, provisional, working, discoveredRootPaths, items);
+        ProbeVectorAllocator(image, memory, provisional, working, discoveredRootPaths, items);
 
         // Build final resolved profile + compact "extends" output.
         var finalProfile = OffsetProfile.Load(working.ToJsonString(), resolveLayout);
@@ -453,10 +454,16 @@ public static class NewBuildDiscoverer
                 case "object":
                 {
                     var vts = ResolveSpecVtables(working, spec);
+                    if (vts.Count == 0 && !string.IsNullOrEmpty(spec.HolderClass))
+                    {
+                        holderRtti ??= RttiIndex.Build(image);
+                        foreach (uint vt in holderRtti.Vtables(spec.HolderClass, 0)) vts.Add(vt);
+                    }
+                    string label = spec.VtablePath ?? spec.HolderClass ?? "";
                     if (vts.Count == 0)
                     {
                         if (!spec.Optional)
-                            items.Add(new(path, DiscoveryStatus.Manual, "SKIPPED", $"Missing vtable '{spec.VtablePath}'", null));
+                            items.Add(new(path, DiscoveryStatus.Manual, "SKIPPED", $"Missing vtable '{label}'", null));
                         continue;
                     }
                     var hits = new List<uint>();
@@ -465,7 +472,7 @@ public static class NewBuildDiscoverer
                     {
                         items.Add(new(path, spec.Optional ? DiscoveryStatus.Warn : DiscoveryStatus.Manual, "NOT_FOUND",
                             $"No static singleton for vtable {string.Join("/", vts.Select(Hex))}",
-                            spec.Optional ? null : $"dotnet run --project src/Fm27Editor.Tools -c Release -- slotsbyname \"{spec.VtablePath}\""));
+                            spec.Optional ? null : $"dotnet run --project src/Fm27Editor.Tools -c Release -- slotsbyname \"{label}\""));
                         continue;
                     }
                     uint chosen = hits[0];
@@ -1563,6 +1570,30 @@ public static class NewBuildDiscoverer
         }
         items.Add(new("forceAccept.boardRequests", DiscoveryStatus.Pass, $"{found[0].Rva} / {found[1].Rva}",
             $"gate1={found[0].Original}, gate2={found[1].Original}"));
+    }
+
+    static void ProbeVectorAllocator(
+        ModuleImage image,
+        IProcessMemory memory,
+        OffsetProfile profile,
+        JsonObject working,
+        List<string> discoveredRootPaths,
+        List<DiscoveryItem> items)
+    {
+        if (profile.VectorAllocator is not { } layout) return;
+        var hits = RootFinder.FindVectorAllocator(image, memory, layout);
+        if (hits.Count == 0)
+        {
+            items.Add(new("vectorAllocator.instanceRva", DiscoveryStatus.Manual, "NOT_FOUND",
+                "No inline vector allocator matched in writable module data"));
+            return;
+        }
+        string rvaHex = Hex(hits[0].Rva);
+        ProfileJsonResolver.SetByPath(working, "vectorAllocator.instanceRva", JsonValue.Create(rvaHex));
+        if (!discoveredRootPaths.Contains("vectorAllocator.instanceRva", StringComparer.Ordinal))
+            discoveredRootPaths.Add("vectorAllocator.instanceRva");
+        items.Add(new("vectorAllocator.instanceRva", hits.Count == 1 ? DiscoveryStatus.Pass : DiscoveryStatus.Warn,
+            rvaHex, $"inline allocator ({hits[0].PoolCount} pools, {hits.Count} candidate(s))"));
     }
 
     public static bool TryReadPrimaryPeCodeSection(ReadOnlySpan<byte> header, IProcessMemory memory, ulong moduleBase, out uint codeRva, out byte[] code)

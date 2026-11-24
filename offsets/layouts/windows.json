@@ -4,6 +4,8 @@
   "gameUiRva": "0x587C470",
   "gameUiVtable": "0x4C3ED08",
   "gameUiLoadsOffset": "0x100",
+  "teamTactics": { "managersRva": "0x586F920", "entries": "0x20", "teamTree": "0x0", "treeHeadParent": "0x8", "treeRight": "0x10", "treeIsNil": "0x19", "treeKey": "0x20", "treeValue": "0x28", "tactics": "0x1018", "flagsA": "0xE0", "flagsB": "0xE8" },
+  "vectorAllocator": { "instanceRva": "0x5878D48", "pools": "0x18", "pooled": "0x34", "header": "0x30", "poolCapacity": "0x74", "poolHeader": "0x78" },
   "retirementManagerRva": "0x586F850",
   "retirementManagerVtable": "0x5036E30",
   "nationAppointmentVtable": "0x4C5E518",
@@ -341,7 +343,8 @@
       "bClubMoveVtable": "0x4E00148",
       "managerRva": "0x586B520",
       "managerVtable": "0x4DFF2F8",
-      "offerVector": "0x20"
+      "offerVector": "0x20",
+      "copyVector": "0x38"
     },
     "futureTransfers": {
       "playerOffers": "0x328",
@@ -1861,6 +1864,10 @@
     "club.projects.stadiumChanges.tableRoot": {
       "kind": "object",
       "vtablePath": "club.projects.stadiumChanges.tableVtable"
+    },
+    "teamTactics.managersRva": {
+      "kind": "object",
+      "holderClass": "TACTICS_MANAGER"
     }
   },
   "inMatch": {

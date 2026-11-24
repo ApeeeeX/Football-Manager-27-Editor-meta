@@ -45,6 +45,69 @@ public static class RootFinder
         return false;
     }
 
+    static bool TryReadI32(IProcessMemory memory, ulong address, out int value)
+    {
+        Span<byte> buf = stackalloc byte[4];
+        if (address != 0 && memory.TryRead(address, buf))
+        {
+            value = BitConverter.ToInt32(buf);
+            return true;
+        }
+        value = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// Scans writable module data for the inline vector allocator struct: header == 0, pooled == 1, pool vector
+    /// holding [512..65536] pool pointers whose 16/64/256-byte pools have poolHeader == 0 and monotonic capacities.
+    /// </summary>
+    public static IReadOnlyList<(uint Rva, int PoolCount)> FindVectorAllocator(ModuleImage image, IProcessMemory memory,
+        VectorAllocatorOffsets layout)
+    {
+        int structSize = Math.Max(layout.Pools + 24, Math.Max(layout.Header + 4, layout.Pooled + 1));
+        var hits = new List<(uint Rva, int PoolCount)>();
+        var bytes = image.Bytes;
+
+        foreach (var (rangeStart, rangeEnd) in image.WritableDataRanges)
+        {
+            int start = Math.Max(0, (rangeStart + 7) & ~7);
+            int endLimit = Math.Min(bytes.Length, rangeEnd);
+            for (int slot = start; slot + structSize <= endLimit; slot += 8)
+            {
+                if (BitConverter.ToInt32(bytes, slot + layout.Header) != 0 || bytes[slot + layout.Pooled] != 1)
+                    continue;
+                ulong begin = BitConverter.ToUInt64(bytes, slot + layout.Pools);
+                ulong end = BitConverter.ToUInt64(bytes, slot + layout.Pools + 8);
+                ulong cap = BitConverter.ToUInt64(bytes, slot + layout.Pools + 16);
+                if (!IsHeap(begin) || end <= begin || cap < end || (end - begin) % 8 != 0) continue;
+                ulong count = (end - begin) / 8;
+                if (count is < 512 or > 65536) continue;
+
+                if (!TryReadU64(memory, begin + 1 * 8, out ulong p1) || !IsHeap(p1) ||
+                    !TryReadU64(memory, begin + 16 * 8, out ulong p16) || p1 != p16 ||
+                    !TryReadU64(memory, begin + 64 * 8, out ulong p64) || !IsHeap(p64) ||
+                    !TryReadU64(memory, begin + 256 * 8, out ulong p256) || !IsHeap(p256))
+                    continue;
+
+                if (!TryReadPool(p16, out int c16) || c16 < 16 ||
+                    !TryReadPool(p64, out int c64) || c64 < 64 ||
+                    !TryReadPool(p256, out int c256) || c256 < 256 ||
+                    c16 > c64 || c64 > c256 || c256 > (1 << 20))
+                    continue;
+
+                hits.Add(((uint)slot, (int)count));
+            }
+        }
+        return hits;
+
+        bool TryReadPool(ulong pool, out int capacity)
+        {
+            capacity = 0;
+            return TryReadI32(memory, pool + (ulong)layout.PoolHeader, out int hdr) && hdr == 0 &&
+                   TryReadI32(memory, pool + (ulong)layout.PoolCapacity, out capacity);
+        }
+    }
+
     /// <summary>Every module slot whose vector at +Offset holds objects with the expected vtable, in image order.</summary>
     public static IReadOnlyList<uint> FindVector(ModuleImage image, IProcessMemory memory, uint vtableRva, int offset,
         int min, int max)

@@ -597,6 +597,24 @@ public sealed class OffsetProfile
             if (GameUiRva is { } gameUi) H("gameUiRva", gameUi);
             if (GameUiVtable is { } gameUiVtable) H("gameUiVtable", gameUiVtable);
             if (GameUiLoadsOffset is { } gameUiLoads) H("gameUiLoadsOffset", gameUiLoads);
+            if (TeamTactics is { } teamTactics)
+            {
+                w.WriteStartObject("teamTactics");
+                H("managersRva", teamTactics.ManagersRva); H("entries", teamTactics.Entries); H("teamTree", teamTactics.TeamTree);
+                if (teamTactics.TreeHeadParent is { } headParent) H("treeHeadParent", headParent);
+                if (teamTactics.TreeRight != 8) H("treeRight", teamTactics.TreeRight);
+                if (teamTactics.TreeIsNil is { } isNil) H("treeIsNil", isNil);
+                H("treeKey", teamTactics.TreeKey); H("treeValue", teamTactics.TreeValue);
+                H("tactics", teamTactics.Tactics); H("flagsA", teamTactics.FlagsA); H("flagsB", teamTactics.FlagsB);
+                w.WriteEndObject();
+            }
+            if (VectorAllocator is { } vecAlloc)
+            {
+                w.WriteStartObject("vectorAllocator");
+                H("instanceRva", vecAlloc.InstanceRva); H("pools", vecAlloc.Pools); H("pooled", vecAlloc.Pooled);
+                H("header", vecAlloc.Header); H("poolCapacity", vecAlloc.PoolCapacity); H("poolHeader", vecAlloc.PoolHeader);
+                w.WriteEndObject();
+            }
             if (RetirementManagerRva is { } retirementRva) H("retirementManagerRva", retirementRva);
             if (RetirementManagerVtable is { } retirementVtable) H("retirementManagerVtable", retirementVtable);
             if (NationAppointmentVtable is { } appointmentVtable) H("nationAppointmentVtable", appointmentVtable);
