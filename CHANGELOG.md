@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.5
+
+- **Advanced Search is back on the toolbar,** next to Your Manager, on Windows and Mac. 1.5.3 and 1.5.4 removed it by mistake.
+- **New game builds:** `newbuild` now carries in-match editing, club swap, Force Board Request and the other recent features over to a new game version.
+
 ## 1.5.4
 
 - **Club swap:** says why two clubs cannot be swapped (season started, other country, same division, no senior team, no table, points adjustment) as soon as a club is chosen, and a failed swap leaves only Close. A table row whose club name is still empty no longer blocks the swap.
