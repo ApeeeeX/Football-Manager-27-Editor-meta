@@ -156,8 +156,6 @@ The editor refuses to attach to an unprofiled build. To support a new patch, loa
 2. `verify-build --profile offsets/<build>.json --expect-players N --expect-staff N --expect-humans N --negative-test --writes` checks vtables, game-UI counts, semantic invariants, database fixtures, byte-exact round-trip writes and game-heap allocations.
 3. `verify-build ... --crash-gate state.json`, press **Continue** and **Load Game** in FM, then run `verify-build ... --crash-gate-verify state.json --release-gate --receipt receipt.json`. A `VERDICT: PASS` receipt unlocks `"readOnly"` and can go into a pull request.
 
-See [docs/NEW-BUILD-PROFILE.md](docs/NEW-BUILD-PROFILE.md) for the full runbook.
-
 ## Not supported: women's football
 
 The editor is built and checked for men's football only. Women's teams, players and competitions can show missing or wrong data and are untested for writes, so avoid editing them.

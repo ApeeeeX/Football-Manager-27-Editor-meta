@@ -156,8 +156,6 @@ App không gắn vào bản game chưa có profile. Để hỗ trợ bản mới
 2. `verify-build --profile offsets/<build>.json --expect-players N --expect-staff N --expect-humans N --negative-test --writes` kiểm vtable, số lượng đối chiếu từ game, tính hợp lệ dữ liệu, mốc dữ liệu cố định, round-trip ghi từng byte và heap của game.
 3. `verify-build ... --crash-gate state.json`, bấm **Continue** rồi **Load Game** trong FM, rồi chạy `verify-build ... --crash-gate-verify state.json --release-gate --receipt receipt.json`. Receipt `VERDICT: PASS` là đủ điều kiện bỏ `"readOnly"` và tạo PR.
 
-Xem hướng dẫn đầy đủ ở [docs/NEW-BUILD-PROFILE.md](docs/NEW-BUILD-PROFILE.md).
-
 ## Chưa hỗ trợ: bóng đá nữ
 
 Editor chỉ được xây dựng và kiểm chứng cho bóng đá nam. Đội, cầu thủ và giải đấu nữ có thể thiếu hoặc sai dữ liệu và chưa được kiểm tra thao tác ghi, nên tránh chỉnh sửa chúng.

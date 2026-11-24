@@ -67,22 +67,54 @@ dotnet run --project src/Fm27Editor.Tools -c Release -- players "Kobbie Mainoo"
 - **UI style:** dense and plain. No decorative gradients, nested rounded cards, illustrative icons, emoji, taglines or helper text; if a screen needs explaining, fix the layout. Related entities are links that open their own tab. Do not open several windows for the same thing.
   Reuse what exists: every table is a `ToolGrid` (the Squads look), cards are `UiKit.Card`, forms `TwoColumnFormBuilder`,
   search/pickers the shared dialogs, and Core logic the existing readers/helpers. Never build a bespoke table or a second
-  copy of a helper for one feature; if the shared piece lacks something, extend it. Canonical checklist: `docs/DESIGN-RULES.md` (do not delete).
+  copy of a helper for one feature; if the shared piece lacks something, extend it.
+- **Screens:** actions are words (Add, Remove, Save changes, Review changes), never glyph-only buttons. New rows and forms start empty, with nothing preselected. Named values are drop-downs, entities are type-then-pick boxes and links. Keep consistent padding, avoid dead space, and do not change window size or layout beyond the request.
+- **Saving:** the app has one Save (top bar, Ctrl+S). Edits are drafts until Save. Every write message ends with "Continue in FM to see updates."
+- **Bulk and long work:** bulk changes go through Review and are one undo group. Work over about 2 seconds runs in the background with progress and Cancel. Skipped records are counted and listed with a reason.
 - **Tests:** do not skip, disable, weaken or delete a failing test to get green. Explain why it fails before touching it. Expected values must come from an independent source (the game's own UI, a reference editor, bytes captured from the game, or hand calculation), not from the code under test.
 - **Unknown values** are reported as unknown; never substitute `-1` or an invented number.
-- Do not commit generated output, captures, local notes or game-derived material. Reverse-engineering notes and tool output belong on your own machine (`re/` is ignored apart from `re/tools/memscan`).
+- Game data may be tracked, including the calibration save. Do not commit generated build output or local notes. Reverse-engineering notes and tool output belong on your own machine (`re/` is ignored apart from `re/tools/memscan`).
 - When editing a file with mixed CRLF/LF endings, use an editor that preserves them and check the change landed.
 
-## 7. FMRTE investigation
+## 7. Working on this repository
 
-- To learn how FMRTE performs an operation, hook FMRTE before the user performs a real change, and capture that operation. Give the user the exact operation and values to apply.
-- Opening an FMRTE page or using Load Game is not an operation that reveals how a change works. Never ask the user to open a page or load game as an investigation step or as evidence of a change.
-- Do not infer FMRTE behaviour from page navigation, loading, or assumptions about caching; base conclusions on the captured operation and observed results.
+**Start of a session**
 
-## 8. Supporting a new game build
+1. Read the newest `releases/<version>.md`. It says what is done, where it is, and what is open.
+2. Check `git status` and `git log`. Other agents may be working in the same tree: never overwrite or revert their changes.
+3. Do what was asked and nothing more. Commit and push only when the owner asks.
 
-Full design and runbook: `docs/NEW-BUILD-PROFILE.md`. It is written so that a person or a small agent can follow it step by
-step; every step ends in a PASS/WARN/MANUAL or PASS/FAIL line, never a judgement call.
+**Finding how the game works**
+
+- Trust evidence in this order: the game's own UI and In-Game Editor, the game binary, live game memory, then a reference editor as a source of numbers. A reference editor's behaviour is not evidence of how the game works.
+- Start from names the game ships: RTTI classes, editor field IDs, and strings. Follow them to the function or field, and read disassembly with the platform's command-line tools (`xcrun lldb --batch` on macOS).
+- Read live memory read-only until the change is understood. Use `memdump`, `ptrdump`, `vtsurvey`, `slotsbyname`, `vectorroot`, `heapvectors`, `ptrpath`, and `heapfind`.
+- Find entities by ID, resolve objects through their vtable and profile offsets, and never reuse an address after a save is loaded.
+- On macOS the helper serves one client: close the editor before attaching a command-line tool.
+- Never close the game or Steam. Prefer a throwaway save for writes.
+
+**Before calling something done**
+
+- Compare the result with an independent value from the game on each platform it claims to support. State plainly what was not checked.
+- Run `dotnet test Fm27Editor.slnx -c Release`. Build and package only when needed: packaging replaces the running app and takes time and disk space.
+- Keep internal notes and research in ignored folders (`docs/*.md`, `re/`). This is a public repository, so tracked files must not link to them.
+
+## 8. Release log
+
+Every change to `src/` or `offsets/` must update the newest `releases/<version>.md` in the same push. CI fails otherwise. Before pushing, run:
+
+```bash
+scripts/check-release-log.sh origin/main HEAD
+```
+
+- Keep one row per feature or fix: area, what changed, files, platforms checked, and status (**Done**, **Needs game check**, or **Partial**).
+- Update the same row when a feature changes. Move unfinished work to **Open work** and remove it when finished.
+- Record only what was actually checked. Do not write RVAs, offsets or private notes here.
+- After a version is tagged, create the next `releases/<version>.md`. `CHANGELOG.md` stays the user-facing summary.
+
+## 9. Supporting a new game build
+
+Every step ends in a PASS/WARN/MANUAL or PASS/FAIL line, never a judgement call.
 
 1. Load a save in the new build (a throwaway calibration save).
 2. Discover: `newbuild --out offsets/<build>.json` (add `--layout macos|touch-macos|windows` if the layout is not detected).
@@ -100,10 +132,11 @@ step; every step ends in a PASS/WARN/MANUAL or PASS/FAIL line, never a judgement
 Rehearse on a supported build with `newbuild --ignore-profiles`: the generated profile must match the committed one, or the
 difference must be explained (the Steam macOS rehearsal of 19/11/2026 found a wrong Corporate Facilities offset this way).
 
-What the gate checks, and the failures it was built from, are in `docs/NEW-BUILD-PROFILE.md`. Never report a build as
+The gate checks RTTI, completeness against independent counts, per-field semantics, write round-trips, the live crash gate
+and a negative self-test. Exit codes: `0` PASS, `1` FAIL, `2` usage or attach error, `3` pending crash gate. Never report a build as
 supported from `gamecheck` alone: a group there counts as filled when any one field reads.
 
 Lower-level survey commands remain for the MANUAL cases: `vtsurvey`, `slotsbyname`, `vectorroot`, `heapvectors`, `ptrpath`,
 `heapfind`. Find entities by ID, not name.
 
-Known limits: the team-wide Tactical Understanding bars are not supported. A reader that reports success can still have thrown on some records; read the `threw` counts in `gamecheck`, not only the `ok` lines.
+Known limit: a reader that reports success can still have thrown on some records; read the `threw` counts in `gamecheck`, not only the `ok` lines.

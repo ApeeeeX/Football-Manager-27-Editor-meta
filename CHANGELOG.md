@@ -13,7 +13,7 @@
 - **Windows `27.1.0+2505117` (Steam and Game Pass):** support players who are also staff (`db::ACTUAL_PLAYER_AND_NON_PLAYER` subtype insertion) across readers, writers, and transfer/release paths, and complete `newbuild` discovery on Windows.
 - **macOS Football Manager Touch `27.1.0+2505719` and `27.0.1+2503222`:** verified read/write support with game-heap allocations, transfers, loans, future transfers, promises, `AWARD_MANAGER`, Corporate Facilities at `0x8AD`, and Continue + Load Game crash-gate verification.
 - **Player Information UI (Windows and macOS):** moved the personality classification label from the `PERSONALITY` attribute card header to the top of `PERSONAL DETAILS` (right-aligned above `Born`), and left-aligned the lower checkbox and retirement labels.
-- **New game builds & hardening:** `newbuild` discovers a profile from RTTI and the live save in about 30 seconds and `verify-build` enforces the release gate (`docs/NEW-BUILD-PROFILE.md`); hardened with Touch `AWARD_MANAGER`, subtype-insertion-aware promise discovery, `CorporateFacilities` duplicate-field filtering, and `futureTransfers.dateVector` / `proposals.changedFlag` vector-header checks.
+- **New game builds & hardening:** `newbuild` discovers a profile from RTTI and the live save in about 30 seconds and `verify-build` enforces the release gate; hardened with Touch `AWARD_MANAGER`, subtype-insertion-aware promise discovery, `CorporateFacilities` duplicate-field filtering, and `futureTransfers.dateVector` / `proposals.changedFlag` vector-header checks.
 - macOS Steam `27.1.0+2505117`: Corporate Facilities read 0 for every club (offset `0x8A9`); it is at `0x8AD`. Found by rehearsing `newbuild` with the profiles hidden.
 
 ## 1.5.0
