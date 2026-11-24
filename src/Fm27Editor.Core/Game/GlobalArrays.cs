@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Collections.Concurrent;
 using Fm27Editor.Core.Memory;
 
 namespace Fm27Editor.Core.Game;
@@ -30,28 +32,81 @@ public sealed record GlobalArrayOffsets(uint ClubsSlotRva);
 public static class GlobalArrayFinder
 {
     /// <summary>call rdi; mov rbx,[rip+d]; mov r14,[rip+d]; cmp rbx,r14 — the pair of array slots FM Studio reads.</summary>
+    static readonly byte[] Prefix = [0xFF, 0xD7, 0x48, 0x8B, 0x1D];
     static readonly byte?[] Signature =
         [0xFF, 0xD7, 0x48, 0x8B, 0x1D, null, null, null, null, 0x4C, 0x8B, 0x35, null, null, null, null, 0x4C, 0x39, 0xF3];
+    static readonly ConcurrentDictionary<(ulong Base, ulong Size), (ulong MatchAt, ulong StartSlot, ulong EndSlot)> CachedClubsSlots = new();
 
     /// <summary>The module slots holding the clubs array begin and end pointers, or null when the signature is absent.</summary>
     public static (ulong StartSlot, ulong EndSlot)? FindClubsSlots(IProcessMemory memory, ulong moduleBase, ulong moduleSize)
     {
-        const int chunk = 1 << 23;
-        var buffer = new byte[chunk + Signature.Length];
-        for (ulong offset = 0; offset < moduleSize; offset += (ulong)chunk)
+        if (moduleSize < (ulong)Signature.Length) return null;
+        if (CachedClubsSlots.TryGetValue((moduleBase, moduleSize), out var cached))
         {
-            int length = (int)Math.Min((ulong)chunk + (ulong)Signature.Length, moduleSize - offset);
-            if (!memory.TryRead(moduleBase + offset, buffer.AsSpan(0, length))) continue;
-            int found = IndexOf(buffer, length);
-            if (found < 0) continue;
-            ulong at = moduleBase + offset + (ulong)found;
-            int disp1 = BitConverter.ToInt32(buffer, found + 5), disp2 = BitConverter.ToInt32(buffer, found + 12);
-            ulong start = at + 2 + 7 + (ulong)(long)disp1, end = at + 9 + 7 + (ulong)(long)disp2;
-            if (start < moduleBase || end < moduleBase || start >= moduleBase + moduleSize || end >= moduleBase + moduleSize)
-                continue;
-            return (start, end);
+            var verify = new byte[Signature.Length];
+            if (memory.TryRead(cached.MatchAt, verify) && MatchesAt(verify, 0))
+                return (cached.StartSlot, cached.EndSlot);
+            CachedClubsSlots.TryRemove((moduleBase, moduleSize), out _);
         }
-        return null;
+
+        const int chunk = 1 << 22;
+        var buffer = ArrayPool<byte>.Shared.Rent(chunk + Signature.Length);
+        try
+        {
+            foreach (var (secStart, secSize) in ScanRanges(memory, moduleBase, moduleSize))
+            {
+                for (ulong offset = 0; offset < secSize; offset += chunk)
+                {
+                    int length = (int)Math.Min((ulong)chunk + (ulong)Signature.Length, secSize - offset);
+                    if (length < Signature.Length) continue;
+                    var span = buffer.AsSpan(0, length);
+                    if (!memory.TryRead(secStart + offset, span)) continue;
+                    int found = IndexOf(span);
+                    if (found < 0) continue;
+                    ulong at = secStart + offset + (ulong)found;
+                    int disp1 = BitConverter.ToInt32(buffer, found + 5), disp2 = BitConverter.ToInt32(buffer, found + 12);
+                    ulong start = at + 2 + 7 + (ulong)(long)disp1, end = at + 9 + 7 + (ulong)(long)disp2;
+                    if (start < moduleBase || end < moduleBase || start >= moduleBase + moduleSize || end >= moduleBase + moduleSize)
+                        continue;
+                    CachedClubsSlots[(moduleBase, moduleSize)] = (at, start, end);
+                    return (start, end);
+                }
+            }
+            return null;
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+    }
+
+    static IEnumerable<(ulong Start, ulong Size)> ScanRanges(IProcessMemory memory, ulong moduleBase, ulong moduleSize)
+    {
+        if (moduleSize >= 0x400)
+        {
+            var dos = new byte[4];
+            if (memory.TryRead(moduleBase + 0x3C, dos))
+            {
+                int peOffset = BitConverter.ToInt32(dos);
+                var header = new byte[24];
+                if (peOffset > 0 && (ulong)peOffset + 24 < moduleSize && memory.TryRead(moduleBase + (ulong)peOffset, header) &&
+                    header[0] == (byte)'P' && header[1] == (byte)'E' && header[2] == 0 && header[3] == 0)
+                {
+                    int sections = BitConverter.ToUInt16(header, 6), optional = BitConverter.ToUInt16(header, 20);
+                    var table = new byte[sections * 40];
+                    if (sections > 0 && memory.TryRead(moduleBase + (ulong)peOffset + 24 + (ulong)optional, table))
+                    {
+                        var exec = new List<(ulong Start, ulong Size)>();
+                        for (int i = 0; i < sections; i++)
+                        {
+                            uint size = BitConverter.ToUInt32(table, i * 40 + 8), rva = BitConverter.ToUInt32(table, i * 40 + 12);
+                            uint flags = BitConverter.ToUInt32(table, i * 40 + 36);
+                            if ((flags & 0x20000000) != 0 && rva + (ulong)size <= moduleSize)
+                                exec.Add((moduleBase + rva, size));
+                        }
+                        if (exec.Count > 0) return exec;
+                    }
+                }
+            }
+        }
+        return [(moduleBase, moduleSize)];
     }
 
     /// <summary>The clubs-array start slot: the profile's measured slot when the build has one, else the
@@ -96,14 +151,22 @@ public static class GlobalArrayFinder
             TeamsBegin: Q(clubs + 144), TeamsEnd: Q(clubs + 152));
     }
 
-    static int IndexOf(byte[] data, int length)
+    static bool MatchesAt(ReadOnlySpan<byte> data, int at) =>
+        data.Length - at >= Signature.Length &&
+        data.Slice(at, Prefix.Length).SequenceEqual(Prefix) &&
+        data[at + 9] == 0x4C && data[at + 10] == 0x8B && data[at + 11] == 0x35 &&
+        data[at + 16] == 0x4C && data[at + 17] == 0x39 && data[at + 18] == 0xF3;
+
+    static int IndexOf(ReadOnlySpan<byte> data)
     {
-        for (int i = 0; i + Signature.Length <= length; i++)
+        int pos = 0;
+        while (data.Length - pos >= Signature.Length)
         {
-            bool match = true;
-            for (int j = 0; j < Signature.Length; j++)
-                if (Signature[j] is { } b && data[i + j] != b) { match = false; break; }
-            if (match) return i;
+            int rel = data[pos..^14].IndexOf(Prefix);
+            if (rel < 0) break;
+            int hit = pos + rel;
+            if (MatchesAt(data, hit)) return hit;
+            pos = hit + 1;
         }
         return -1;
     }

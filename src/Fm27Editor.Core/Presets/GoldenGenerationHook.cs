@@ -208,28 +208,45 @@ public sealed class GoldenGenerationHook(IProcessMemory memory, ICodePatchHost? 
                 pattern, Arm64IsBranchWord, patchedFrom: 2, Accept, snapshot)).Value;
         }
         var original = OriginalPattern(profile);
-        var hits = new List<ulong>();
-        foreach (var (start, size) in CodeSections())
+        if (hintedSite is { } hinted && hinted != 0)
         {
-            const int Chunk = 1 << 20;
-            var buffer = new byte[Chunk + original.Length];
-            for (ulong offset = 0; offset < size; offset += Chunk)
+            var probe = new byte[original.Length];
+            if (memory.TryRead(hinted, probe) && (probe.AsSpan().SequenceEqual(original) || IsPatchedSite(probe, original)))
+                return (site = hinted).Value;
+        }
+        var tail = original.AsSpan(7);
+        var hits = new List<ulong>();
+        const int Chunk = 1 << 20;
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(Chunk + original.Length);
+        try
+        {
+            foreach (var (start, size) in CodeSections())
             {
-                int length = (int)Math.Min((ulong)buffer.Length, size - offset);
-                if (!memory.TryRead(start + offset, buffer.AsSpan(0, length))) continue;
-                var span = buffer.AsSpan(0, length);
-                int limit = Math.Min(Chunk, length - original.Length + 1);
-                for (int i = 0; i < limit; i++)
+                for (ulong offset = 0; offset < size; offset += Chunk)
                 {
-                    if (span[i] != 0x0F && span[i] != 0xE9) continue;
-                    var here = span[i..];
-                    if (here[..original.Length].SequenceEqual(original) || IsPatchedSite(here, original))
-                        hits.Add(start + offset + (ulong)i);
+                    int length = (int)Math.Min((ulong)(Chunk + original.Length), size - offset);
+                    if (length < original.Length) continue;
+                    var span = buffer.AsSpan(0, length);
+                    if (!memory.TryRead(start + offset, span)) continue;
+                    int limit = Math.Min(Chunk, length - original.Length + 1);
+                    int pos = 7;
+                    int end = limit - 1 + original.Length;
+                    while (pos < end)
+                    {
+                        int rel = span[pos..end].IndexOf(tail);
+                        if (rel < 0) break;
+                        int i = pos + rel - 7;
+                        var here = span[i..];
+                        if (here[..original.Length].SequenceEqual(original) || IsPatchedSite(here, original))
+                            hits.Add(start + offset + (ulong)i);
+                        pos += rel + 1;
+                    }
+                    if (hits.Count > 1) break;
                 }
                 if (hits.Count > 1) break;
             }
-            if (hits.Count > 1) break;
         }
+        finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
         if (hits.Count == 0) throw new InvalidOperationException($"{Feature}: the regen code was not found in this build");
         if (hits.Count > 1) throw new InvalidOperationException($"{Feature}: the regen code is not unique in this build");
         return (site = hits[0]).Value;

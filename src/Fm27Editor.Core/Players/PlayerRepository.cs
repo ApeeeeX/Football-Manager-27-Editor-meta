@@ -10,23 +10,41 @@ public sealed class PlayerRepository(IProcessMemory memory, OffsetProfile profil
 
     public IReadOnlyList<PlayerRecord> LoadAll()
     {
-        using var reads = new BulkReadScope(memory);
-        return new PlayerRepository(reads.Memory, profile, moduleBase).LoadAllCore();
+        var pointers = ReadPointerArray();
+        if (memory is IConcurrentMemoryReads && pointers.Length >= 2048)
+        {
+            int workerCount = Math.Clamp(Environment.ProcessorCount / 2, 2, 6);
+            int chunk = (pointers.Length + workerCount - 1) / workerCount;
+            var parts = new List<PlayerRecord>[workerCount];
+            Parallel.For(0, workerCount, i =>
+            {
+                int start = i * chunk;
+                int count = Math.Min(chunk, pointers.Length - start);
+                if (count <= 0) { parts[i] = []; return; }
+                using var reads = new BulkReadScope(memory, pageCount: 2048);
+                parts[i] = new PlayerRepository(reads.Memory, profile, moduleBase).LoadSlice(pointers, start, count);
+            });
+            var combined = new List<PlayerRecord>(pointers.Length);
+            foreach (var part in parts) combined.AddRange(part);
+            return combined;
+        }
+        using var serialReads = new BulkReadScope(memory);
+        return new PlayerRepository(serialReads.Memory, profile, moduleBase).LoadSlice(pointers, 0, pointers.Length);
     }
 
-    IReadOnlyList<PlayerRecord> LoadAllCore()
+    List<PlayerRecord> LoadSlice(ulong[] pointers, int start, int count)
     {
-        var pointers = ReadPointerArray();
+        var slice = pointers.AsSpan(start, count);
         var reader = new PlayerReader(memory, profile) { ModuleBase = moduleBase };
         var vtables = profile.PlayerVtableRvas.Select(v => moduleBase + v).ToHashSet();
         if (memory is ReadAheadMemory ram)
         {
             int insertionTail = profile.PlayerInsertions.Count > 0 ? profile.PlayerInsertions.Values.Max(i => i.Length) : 0;
-            ram.Prefetch(pointers, profile.PlayerObjectSize + insertionTail);
+            ram.Prefetch(slice, profile.PlayerObjectSize + insertionTail);
             var f = profile.Fields;
-            var namePointers = new List<ulong>(pointers.Length * 2);
+            var namePointers = new List<ulong>(count * 2);
             var seenNames = new HashSet<ulong>();
-            var contracts = profile.Contract is not null ? new List<ulong>(pointers.Length) : null;
+            var contracts = profile.Contract is not null ? new List<ulong>(count) : null;
             Span<byte> word = stackalloc byte[8];
             static int Shift(PlayerInsertion ins, bool hasIns, int offset) =>
                 hasIns && offset >= ins.At ? offset + ins.Length : offset;
@@ -38,7 +56,7 @@ public sealed class PlayerRepository(IProcessMemory memory, OffsetProfile profil
                     if (ptr != 0 && seen.Add(ptr)) targets.Add(ptr);
                 }
             }
-            foreach (ulong p in pointers)
+            foreach (ulong p in slice)
             {
                 if (p == 0 || !memory.TryRead(p, word)) continue;
                 ulong vt = BitConverter.ToUInt64(word);
@@ -62,8 +80,8 @@ public sealed class PlayerRepository(IProcessMemory memory, OffsetProfile profil
                 ram.Prefetch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(namePointers), 64);
         }
         var obj = new byte[profile.PlayerObjectSize];
-        var result = new List<PlayerRecord>(pointers.Length);
-        foreach (var p in pointers)
+        var result = new List<PlayerRecord>(count);
+        foreach (var p in slice)
         {
             if (p == 0 || !memory.TryRead(p, obj)) continue;
             ulong vt = BitConverter.ToUInt64(obj);

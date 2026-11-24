@@ -342,7 +342,7 @@ try
         "promises" => PromisesCommand(args[1..]),
         "temporarypermits" => TemporaryPermitsCommand(),
         "permitscan" => PermitScanCommand(args.Length > 1 ? int.Parse(args[1]) : 1),
-        "poolscan" => PoolScanCommand(Convert.ToUInt64(args[1].Replace("0x", ""), 16)),
+        "poolscan" => PoolScanCommand(args.Length > 1 ? Convert.ToUInt64(args[1].Replace("0x", ""), 16) : null),
         "memdump" => MemDumpCommand(args[1], args.Length > 2 ? Convert.ToInt32(args[2], 16) : 0x80),
         "jobscan" => JobScanCommand(Convert.ToUInt64(args[1].Replace("0x", ""), 16), args.Length > 2 ? Convert.ToInt32(args[2], 16) : 0x400),
         "intwithdrawal" => IntWithdrawalCommand(string.Join(" ", args[1..])),
@@ -7564,22 +7564,27 @@ int PermitScanCommand(int flag)
     return 0;
 }
 
-// poolscan <allocator singleton rva>   every size pool of the game's vector allocator: capacity and header (read only)
-int PoolScanCommand(ulong rva)
+// poolscan [allocator singleton rva]   every size pool of the game's vector allocator: capacity and header (read only)
+int PoolScanCommand(ulong? rva)
 {
     using var session = Attach(writable: false);
     var m = session.Memory;
-    ulong alloc = session.ModuleBase + rva;
-    ulong begin = m.ReadUInt64(alloc + 0x18), end = m.ReadUInt64(alloc + 0x20);
-    Console.WriteLine($"allocator 0x{alloc:X}: pooled {m.Read(alloc + 0x34, 1)[0]}, header {BitConverter.ToInt32(m.Read(alloc + 0x30, 4))}, {(end - begin) / 8} pools");
+    var o = rva is { } explicitRva
+        ? (session.Profile.VectorAllocator is { } va
+            ? va with { InstanceRva = (uint)explicitRva }
+            : new VectorAllocatorOffsets((uint)explicitRva, 0x18, 0x34, 0x30, 0x144, 0x148))
+        : session.Profile.VectorAllocator ?? throw new InvalidOperationException("Profile has no vectorAllocator section; pass <rva>");
+    ulong alloc = session.ModuleBase + o.InstanceRva;
+    ulong begin = m.ReadUInt64(alloc + (ulong)o.Pools), end = m.ReadUInt64(alloc + (ulong)o.Pools + 8);
+    Console.WriteLine($"allocator 0x{alloc:X}: pooled {m.Read(alloc + (ulong)o.Pooled, 1)[0]}, header {BitConverter.ToInt32(m.Read(alloc + (ulong)o.Header, 4))}, {(end - begin) / 8} pools");
     var pools = m.Read(begin, (int)(end - begin));
     int nonZeroHeader = 0, missing = 0, smaller = 0; var caps = new SortedDictionary<int, int>();
     for (int size = 0; size < pools.Length / 8; size++)
     {
         ulong pool = BitConverter.ToUInt64(pools, size * 8);
         if (pool == 0) { missing++; continue; }
-        var h = m.Read(pool + 0x140, 0x10);
-        int cap = BitConverter.ToInt32(h, 4), header = BitConverter.ToInt32(h, 8);
+        int cap = BitConverter.ToInt32(m.Read(pool + (ulong)o.PoolCapacity, 4));
+        int header = BitConverter.ToInt32(m.Read(pool + (ulong)o.PoolHeader, 4));
         if (header != 0) { nonZeroHeader++; if (nonZeroHeader <= 5) Console.WriteLine($"  size {size}: header {header}"); }
         if (cap < size) smaller++;
         caps[cap] = caps.GetValueOrDefault(cap) + 1;

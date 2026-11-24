@@ -95,14 +95,19 @@ internal sealed class NationScreen(IScreenHost host)
 
     protected override IReadOnlyList<NationRow> LoadRows(GameSession session, LoadedGameData? data)
     {
+        var nations = data?.Nations ?? session.Nations.LoadAll();
         using var reads = new BulkReadScope(session.Memory);
+        if (nations.Count > 0) reads.Prefetch(nations.Select(n => n.Address).ToArray(), 0x300);
         var fields = new NationFieldAccess(reads.Memory, session.Profile, session.ModuleBase);
-        return (data?.Nations ?? session.Nations.LoadAll()).Select(n =>
-        {
-            var v = fields.ReadAll(n.Address);
-            return new NationRow(n, n.DisplayName, n.Id, v.TryGetValue(NationField.FifaPosition, out var a) ? a : null,
-                v.TryGetValue(NationField.YouthRating, out var y) ? y : null, v.TryGetValue(NationField.EconomicFactor, out var e) ? e : null);
-        }).OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return nations.Select(n => new NationRow(
+            n,
+            n.DisplayName,
+            n.Id,
+            fields.Read(n.Address, NationField.FifaPosition),
+            fields.Read(n.Address, NationField.YouthRating),
+            fields.Read(n.Address, NationField.EconomicFactor)))
+            .OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
     }
 
     protected override bool Matches(NationRow row, string q) =>

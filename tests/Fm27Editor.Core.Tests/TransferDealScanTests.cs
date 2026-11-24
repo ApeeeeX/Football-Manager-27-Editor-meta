@@ -122,4 +122,38 @@ public sealed class TransferDealScanTests
         Assert.Null(reader.FindForPlayer(0x30000, candidates));
         Assert.Equal(1, memory.Enumerations);
     }
+
+    [Fact]
+    public void Owned_transfer_deals_accepts_verified_empty_copy_vector_and_rejects_unverified_empty()
+    {
+        var profile = Profile("27.1.0+2505117-steam");
+        var p = profile.Proposals!;
+        Assert.Equal(0x38, p.CopyVector);
+        Assert.Equal(0x38, OffsetProfile.Load(profile.ToJson()).Proposals!.CopyVector);
+
+        var mem = new FakeMemory();
+        ulong mgr = 0x10_0000, vec = 0x18_0000, offer = 0x20_0000;
+        var rootSlot = mem.Map(Module + p.ManagerRva!.Value, 8);
+        BitConverter.GetBytes(mgr).CopyTo(rootSlot, 0);
+
+        var mgrBytes = mem.Map(mgr, Math.Max(p.OfferSerial + 4, 0x800));
+        BitConverter.GetBytes(Module + p.ManagerVtable!.Value).CopyTo(mgrBytes, 0);
+        BitConverter.GetBytes(vec).CopyTo(mgrBytes, p.OfferVector);
+        BitConverter.GetBytes(vec + 8).CopyTo(mgrBytes, p.OfferVector + 8);
+        BitConverter.GetBytes(vec + 8).CopyTo(mgrBytes, p.OfferVector + 16);
+
+        var vecBytes = mem.Map(vec, 8);
+        BitConverter.GetBytes(offer).CopyTo(vecBytes, 0);
+
+        var offerBytes = mem.Map(offer, 0x100);
+        BitConverter.GetBytes(Module + p.TransferVtable).CopyTo(offerBytes, 0);
+        BitConverter.GetBytes(0).CopyTo(offerBytes, p.Id);
+
+        Assert.Equal(new[] { offer }, new TransferDealReader(mem, profile, Module).TryReadOwnedCandidates());
+
+        var doc = System.Text.Json.Nodes.JsonNode.Parse(profile.ToJson())!;
+        doc["player"]!["proposals"]!["copyVector"] = null;
+        var unverified = OffsetProfile.Load(doc.ToJsonString());
+        Assert.Null(new TransferDealReader(mem, unverified, Module).TryReadOwnedCandidates());
+    }
 }

@@ -197,7 +197,10 @@ public sealed class OffsetProfile
             GameUiLoadsOffset = gameUiLoads,
             TeamTactics = root.TryGetProperty("teamTactics", out var teamTactics)
                 ? new Players.TeamTacticOffsets((uint)Hex(teamTactics, "managersRva"), Hex(teamTactics, "entries"), Hex(teamTactics, "teamTree"),
-                    Hex(teamTactics, "treeKey"), Hex(teamTactics, "treeValue"), Hex(teamTactics, "tactics"), Hex(teamTactics, "flagsA"), Hex(teamTactics, "flagsB"))
+                    Hex(teamTactics, "treeKey"), Hex(teamTactics, "treeValue"), Hex(teamTactics, "tactics"), Hex(teamTactics, "flagsA"), Hex(teamTactics, "flagsB"),
+                    teamTactics.TryGetProperty("treeRight", out _) ? Hex(teamTactics, "treeRight") : 8,
+                    teamTactics.TryGetProperty("treeHeadParent", out _) ? Hex(teamTactics, "treeHeadParent") : null,
+                    teamTactics.TryGetProperty("treeIsNil", out _) ? Hex(teamTactics, "treeIsNil") : null)
                 : null,
             VectorAllocator = root.TryGetProperty("vectorAllocator", out var vecAlloc)
                 ? new VectorAllocatorOffsets((uint)Hex(vecAlloc, "instanceRva"), Hex(vecAlloc, "pools"), Hex(vecAlloc, "pooled"), Hex(vecAlloc, "header"), Hex(vecAlloc, "poolCapacity"), Hex(vecAlloc, "poolHeader"))
@@ -220,7 +223,8 @@ public sealed class OffsetProfile
                 (uint)Hex(im, "playerVtable"), (uint)Hex(im, "dataVtable"), (uint)Hex(im, "personVtable"),
                 (uint)Hex(im, "playerStaffPersonVtable"), Hex(im, "data"), Hex(im, "sourcePerson"), Hex(im, "personUid"),
                 Hex(im, "fixture"), Hex(im, "side"), Hex(im, "positionBase"), Hex(im, "attributeBase"),
-                Hex(im, "initialCondition"), Hex(im, "condition"), im.TryGetProperty("morale", out _) ? Hex(im, "morale") : null) : null,
+                Hex(im, "initialCondition"), Hex(im, "condition"), im.TryGetProperty("morale", out _) ? Hex(im, "morale") : null,
+                im.TryGetProperty("liveCondition", out _) ? Hex(im, "liveCondition") : null) : null,
             PlayerListRootRva = (uint)Hex(list, "rootRva"),
             PlayerListBeginOffset = Hex(list, "beginOffset"),
             PlayerListEndOffset = Hex(list, "endOffset"),
@@ -614,6 +618,7 @@ public sealed class OffsetProfile
                 H("positionBase", match.PositionBase); H("attributeBase", match.AttributeBase);
                 H("initialCondition", match.InitialCondition); H("condition", match.Condition);
                 if (match.Morale is { } morale) H("morale", morale);
+                if (match.LiveCondition is { } liveCondition) H("liveCondition", liveCondition);
                 w.WriteEndObject();
             }
             w.WriteStartObject("playerList");

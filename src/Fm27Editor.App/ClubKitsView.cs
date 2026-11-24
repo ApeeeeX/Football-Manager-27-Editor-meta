@@ -32,11 +32,18 @@ public sealed partial class MainWindow
 
     void UpdateKitSaveButtons(ulong club)
     {
-        bool pending = (kitDrafts.TryGetValue(club, out var drafts) && drafts.Count > 0) || pendingAffiliationRemovals.ContainsKey(club) || clubFamiliarityDrafts.ContainsKey(club);
+        youthIntakeDrafts.TryGetValue(club, out var youth);
+        clubAllowanceDrafts.TryGetValue(club, out var allow);
+        bool pending = (kitDrafts.TryGetValue(club, out var drafts) && drafts.Count > 0)
+            || pendingAffiliationRemovals.ContainsKey(club)
+            || clubFamiliarityDrafts.ContainsKey(club)
+            || (youth is not null && youth.HasChanges)
+            || (allow is not null && allow.HasChanges);
         bool scalar = clubDrafts.TryGetValue(club, out var draft) && draft.CanSave;
         bool invalidScalar = draft is not null && draft.InvalidCount > 0;
-        if (clubScreen.SaveButton is { } save) save.IsEnabled = !invalidScalar && (pending || scalar);
-    UpdateClubStatusFromDraft();
+        bool invalidExtra = (youth?.InvalidCount ?? 0) > 0 || (allow?.Invalid.Count ?? 0) > 0;
+        if (clubScreen.SaveButton is { } save) save.IsEnabled = !invalidScalar && !invalidExtra && (pending || scalar);
+        UpdateClubStatusFromDraft();
     }
 
     /// <summary>

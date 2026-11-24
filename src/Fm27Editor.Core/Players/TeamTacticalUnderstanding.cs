@@ -3,8 +3,9 @@ using Fm27Editor.Core.Offsets;
 
 namespace Fm27Editor.Core.Players;
 
-/// <summary>Where a human-managed team's tactics are kept (Steam 27.1.0 macOS, read from the game's maximise action at 0x23BDB88).</summary>
-public sealed record TeamTacticOffsets(uint ManagersRva, int Entries, int TeamTree, int TreeKey, int TreeValue, int Tactics, int FlagsA, int FlagsB);
+/// <summary>Where a human-managed team's tactics are kept (Mac libc++ tree or Windows MSVC std::map tree, driven by profile offsets).</summary>
+public sealed record TeamTacticOffsets(uint ManagersRva, int Entries, int TeamTree, int TreeKey, int TreeValue, int Tactics, int FlagsA, int FlagsB,
+    int TreeRight = 8, int? TreeHeadParent = null, int? TreeIsNil = null);
 
 /// <summary>
 /// Tactical Understanding of a team the way the game's Maximise action sees it. Each tactic slot maps to one option per area;
@@ -52,9 +53,12 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
     /// <summary>One option list per tactic slot; null when the team has no human manager's tactics (unknown, not empty).</summary>
     public IReadOnlyList<int[]>? TacticOptions(ulong team)
     {
-        if (profile.TeamTactics is not { } o) return null;
-        int id = BitConverter.ToInt32(memory.Read(team + 8, 4));
-        ulong root = memory.ReadUInt64(moduleBase + o.ManagersRva);
+        if (team == 0 || profile.TeamTactics is not { } o) return null;
+        Span<byte> b = stackalloc byte[8];
+        if (!memory.TryRead(team + 8, b[..4])) return null;
+        int id = BitConverter.ToInt32(b[..4]);
+        if (!memory.TryRead(moduleBase + o.ManagersRva, b)) return null;
+        ulong root = BitConverter.ToUInt64(b);
         if (root == 0) return null;
         ulong begin = memory.ReadUInt64(root + (ulong)o.Entries), end = memory.ReadUInt64(root + (ulong)o.Entries + 8);
         if (begin == 0 || end < begin || (end - begin) % 8 != 0 || (end - begin) / 8 > MaxManagers) return null;
@@ -63,11 +67,14 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
             ulong entry = memory.ReadUInt64(at);
             if (entry == 0) continue;
             ulong node = memory.ReadUInt64(entry + (ulong)o.TeamTree);
+            if (o.TreeHeadParent is { } headParent && node != 0)
+                node = memory.ReadUInt64(node + (ulong)headParent);
             for (int depth = 0; node != 0 && depth < MaxDepth; depth++)
             {
+                if (o.TreeIsNil is { } isNil && memory.Read(node + (ulong)isNil, 1)[0] != 0) break;
                 int key = BitConverter.ToInt32(memory.Read(node + (ulong)o.TreeKey, 4));
                 if (key == id) return Options(node + (ulong)o.TreeValue, o);
-                node = memory.ReadUInt64(node + (key < id ? 8UL : 0UL));
+                node = memory.ReadUInt64(node + (key < id ? (ulong)o.TreeRight : 0UL));
             }
         }
         return null;
@@ -86,22 +93,40 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
         return result.Count == 0 ? null : result;
     }
 
-    /// <summary>Squad average (0-100) of each area over the team's tactics; a missing row counts as 0. Null when the tactics are unknown.</summary>
+    /// <summary>Squad average (0-100) of each area: over the team's tactics when human-managed, or each player's highest learned option for AI teams.</summary>
     public int[]? Read(ulong team, IReadOnlyList<PlayerRecord> squad)
     {
-        if (TacticOptions(team) is not { } tactics || squad.Count == 0) return null;
+        if (squad.Count == 0) return null;
+        var tactics = TacticOptions(team);
         var result = new int[Areas];
         for (int area = 0; area < Areas; area++)
         {
             long total = 0; int count = 0;
-            var options = tactics.Select(t => t[area]).Distinct().ToArray();
-            foreach (var player in squad)
+            if (tactics is not null)
             {
-                var rows = Rows(Holder(player), area);
-                foreach (int option in options)
+                var options = tactics.Select(t => t[area]).Distinct().ToArray();
+                foreach (var player in squad)
+                {
+                    var rows = Rows(Holder(player), area);
+                    foreach (int option in options)
+                    {
+                        count++;
+                        foreach (uint row in rows) if ((row >> OptionShift & OptionMask) == option) { total += row & ValueMask; break; }
+                    }
+                }
+            }
+            else
+            {
+                foreach (var player in squad)
                 {
                     count++;
-                    foreach (uint row in rows) if ((row >> OptionShift & OptionMask) == option) { total += row & ValueMask; break; }
+                    int max = 0;
+                    foreach (uint row in Rows(Holder(player), area))
+                    {
+                        int v = (int)(row & ValueMask);
+                        if (v > max) max = v;
+                    }
+                    total += max;
                 }
             }
             result[area] = count == 0 ? 0 : (int)Math.Round(total / (double)count / 100);
@@ -109,19 +134,28 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
         return result;
     }
 
-    /// <summary>Sets one area (0-100) for the whole squad on the options of the team's tactics. Returns how many rows changed.</summary>
+    /// <summary>Sets one area (0-100) for the whole squad on the options of the team's tactics (or existing rows for AI teams). Returns how many rows changed.</summary>
     public int Set(ulong team, IReadOnlyList<PlayerRecord> squad, int area, int percent, Func<int, ulong> allocate)
     {
         if (area is < 0 or >= Areas) throw new ArgumentOutOfRangeException(nameof(area));
         if (percent is < 0 or > 100) throw new ArgumentOutOfRangeException(nameof(percent));
-        var tactics = TacticOptions(team) ?? throw new InvalidOperationException("This team's tactics are not available");
+        var tactics = TacticOptions(team);
         int changed = 0;
+        int scaled = percent * 100;
         foreach (var player in squad)
         {
             ulong holder = Holder(player);
             if (holder == 0) continue;
-            foreach (int option in tactics.Select(t => t[area]).Distinct())
-                if (SetRow(holder + (ulong)(area * Stride), option, percent * 100, allocate)) changed++;
+            ulong vector = holder + (ulong)(area * Stride);
+            if (tactics is not null)
+            {
+                foreach (int option in tactics.Select(t => t[area]).Distinct())
+                    if (SetRow(vector, option, scaled, allocate)) changed++;
+            }
+            else
+            {
+                changed += SetExistingRows(vector, scaled);
+            }
         }
         return changed;
     }
@@ -135,16 +169,25 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
     }
 
     /// <summary>Squad average (0-100) of the Position/Role rows the players already hold; null when none has any.</summary>
-    public int? ReadRoles(IReadOnlyList<PlayerRecord> squad)
+    public int? ReadRoles(IReadOnlyList<PlayerRecord> squad, ulong team = 0)
     {
-        long total = 0; int count = 0;
+        bool humanTeam = team != 0 && TacticOptions(team) is not null;
+        double total = 0; int count = 0;
         foreach (var player in squad)
+        {
+            long playerTotal = 0; int playerMax = 0, playerCount = 0;
             foreach (var (at, _) in RoleRows(Holder(player)))
             {
-                total += BitConverter.ToUInt16(memory.Read(at, 2));
-                count++;
+                int v = BitConverter.ToUInt16(memory.Read(at, 2));
+                playerTotal += v;
+                if (v > playerMax) playerMax = v;
+                playerCount++;
             }
-        return count == 0 ? null : (int)Math.Round(total / (double)count / 100);
+            if (playerCount == 0) continue;
+            total += humanTeam ? playerMax : playerTotal / (double)playerCount;
+            count++;
+        }
+        return count == 0 ? null : (int)Math.Round(total / count / 100);
     }
 
     /// <summary>Sets the Position/Role rows the players already hold. A role a player has no row for is not added.</summary>
@@ -163,16 +206,43 @@ public sealed class TeamTacticalUnderstanding(IProcessMemory memory, OffsetProfi
         return changed;
     }
 
-    /// <summary>One player's share of the game's Maximise: the team's tactic options at 100%, adding missing rows.</summary>
+    /// <summary>One player's share of the game's Maximise: the team's tactic options at 100%, adding missing rows (or existing rows for AI teams).</summary>
     public int MaximisePlayer(ulong team, PlayerRecord player, Func<int, ulong> allocate)
     {
-        var tactics = TacticOptions(team);
         ulong holder = Holder(player);
-        if (tactics is null || holder == 0) return 0;
+        if (holder == 0) return 0;
+        var tactics = TacticOptions(team);
         int changed = 0;
         for (int area = 0; area < Areas; area++)
-            foreach (int option in tactics.Select(t => t[area]).Distinct())
-                if (SetRow(holder + (ulong)(area * Stride), option, 10_000, allocate)) changed++;
+        {
+            ulong vector = holder + (ulong)(area * Stride);
+            if (tactics is not null)
+            {
+                foreach (int option in tactics.Select(t => t[area]).Distinct())
+                    if (SetRow(vector, option, 10_000, allocate)) changed++;
+            }
+            else
+            {
+                changed += SetExistingRows(vector, 10_000);
+            }
+        }
+        return changed;
+    }
+
+    int SetExistingRows(ulong vector, int value)
+    {
+        ulong begin = memory.ReadUInt64(vector), end = memory.ReadUInt64(vector + 8), capacity = memory.ReadUInt64(vector + 16);
+        if (begin == 0 || end <= begin || capacity < end || (end - begin) % 4 != 0 || (capacity - begin) % 4 != 0 || (end - begin) / 4 > MaxRows)
+            return 0;
+        int count = (int)((end - begin) / 4), changed = 0;
+        var old = memory.Read(begin, count * 4);
+        for (int i = 0; i < count; i++)
+        {
+            uint row = BitConverter.ToUInt32(old, i * 4);
+            if ((row & ValueMask) == value) continue;
+            Write(begin + (ulong)(i * 4), BitConverter.GetBytes(row & ~(uint)ValueMask | (uint)value));
+            changed++;
+        }
         return changed;
     }
 

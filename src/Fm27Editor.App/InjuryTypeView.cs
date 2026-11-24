@@ -40,8 +40,15 @@ internal sealed class InjuryTypeScreen(IScreenHost host)
     protected override IReadOnlyList<InjuryTypeRow> LoadRows(GameSession session, LoadedGameData? data)
     {
         var players = data?.Players ?? Host.Players();
-        var template = players.Count > 0 ? session.InjuryTemplate(players[0], players) : null;
-        var access = session.InjuryTypeFields;
+        using var reads = new Fm27Editor.Core.Memory.BulkReadScope(session.Memory);
+        PlayerInjury? template = null;
+        if (players.Count > 0)
+        {
+            var reader = new InjuryReader(reads.Memory, session.Profile, session.ModuleBase);
+            foreach (var p in players)
+                if (reader.Read(p) is { Count: > 0 } own) { template = own[0]; break; }
+        }
+        var access = new InjuryTypeAccess(reads.Memory, session.Profile, session.ModuleBase);
         return session.InjuryTypes(template).Select(t => access.Read(t) is { } d ? Row(t, d) : null).OfType<InjuryTypeRow>()
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }

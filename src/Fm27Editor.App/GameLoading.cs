@@ -47,7 +47,7 @@ public sealed partial class MainWindow
         InvalidateFutureTransfers();
     }
 
-    static (int Pid, ulong ModuleBase, ulong ModuleSize, ulong? AcademySite, ulong? DevelopmentSite) cachedArm64Sites;
+    static (int Pid, ulong ModuleBase, ulong ModuleSize, ulong? AcademySite, ulong? DevelopmentSite) cachedHookSites;
 
     async Task PrepareLoadedGameAsync(LoadedGameData data, GameLoadReport report)
     {
@@ -77,29 +77,10 @@ public sealed partial class MainWindow
         var metadataTask = Task.Run(() =>
         {
             var session = data.Session;
-            languageCatalogue = report.Read("languages", "Reading…", () =>
-            {
-                using var reads = new BulkReadScope(session.Memory);
-                return new LanguageReader(reads.Memory, session.Profile, session.ModuleBase).Catalogue(data.Players);
-            });
-            report.Run("person names", "Reading…", () => PersonNames(), () => personNames?.Count ?? 0);
-            personNames ??= [];
-            report.Run("career plans", "Reading career plans…", () => WarmCareerCatalogue(data.Players), () => careerCatalogue?.Count ?? 0);
-            careerCatalogue ??= [];
-            report.Run("future transfers", "Reading…", () => futureAllRows = ReadFutureTransferRows(data), () => futureAllRows.Count);
-            report.Run("retirements", "Reading…", () => retiringAllRows = ReadRetiringRows(data), () => retiringAllRows.Count);
-            if (session.Profile.Proposals is not null)
-                report.Run("transfer proposals", "Reading…", session.Proposals.EnsureLoaded);
-            if (!data.ClauseIndexAttempted && session.Profile.Club?.TransferClauses is { Scan: true })
-                report.Run("transfer clauses", "Reading…", session.EnsureTransferClausesLoaded);
-            if (session.Profile.YouthCandidates is not null)
-                report.Run("youth candidate manager", "Reading…", () => session.YouthCandidates.FindManager());
-            if (session.Profile.Nation is not null)
-                report.Run("work permit table", "Reading…", () => new WorkPermitTable(session.Memory, session.Profile, session.ModuleBase).Locate());
-            if (session.Profile.IsArm64)
+            void LoadSites()
             {
                 var key = (session.Game.ProcessId, session.ModuleBase, (ulong)session.Game.ModuleSize);
-                var cached = cachedArm64Sites;
+                var cached = cachedHookSites;
                 bool hit = key.ProcessId > 0 && cached.Pid == key.Item1 && cached.ModuleBase == key.Item2 && cached.ModuleSize == key.Item3
                     && cached.AcademySite is not null && cached.DevelopmentSite is not null;
                 ulong? academyFound = null, developmentFound = null;
@@ -108,7 +89,7 @@ public sealed partial class MainWindow
                     report.Run("academy site", "Reading…", () => academyFound = session.GoldenGenerationHook.FindSite(null, cached.AcademySite));
                     report.Run("development site", "Reading…", () => developmentFound = session.AcceleratedDevelopment.FindSite(null, cached.DevelopmentSite));
                 }
-                else
+                else if (session.Profile.IsArm64)
                 {
                     var codeSnapshot = Fm27Editor.Core.CodeGen.Arm64SiteFinder.TryCaptureCode(session.Memory, session.ModuleBase, (ulong)session.Game.ModuleSize);
                     if (codeSnapshot is not null)
@@ -123,14 +104,70 @@ public sealed partial class MainWindow
                         report.Run("development site", "Reading…", () => developmentFound = session.AcceleratedDevelopment.FindSite(null));
                     }
                 }
+                else
+                {
+                    var academyTask = Task.Run(() => report.Run("academy site", "Reading…", () => academyFound = session.GoldenGenerationHook.FindSite(null)));
+                    var devTask = Task.Run(() => report.Run("development site", "Reading…", () => developmentFound = session.AcceleratedDevelopment.FindSite(null)));
+                    Task.WaitAll(academyTask, devTask);
+                }
                 if (key.ProcessId > 0 && academyFound is not null && developmentFound is not null)
-                    cachedArm64Sites = (key.Item1, key.Item2, key.Item3, academyFound, developmentFound);
+                    cachedHookSites = (key.Item1, key.Item2, key.Item3, academyFound, developmentFound);
+            }
+
+            if (session.Memory is IConcurrentMemoryReads)
+            {
+                Task[] jobs =
+                [
+                    Task.Run(() =>
+                    {
+                        languageCatalogue = report.Read("languages", "Reading…", () =>
+                        {
+                            using var reads = new BulkReadScope(session.Memory);
+                            return new LanguageReader(reads.Memory, session.Profile, session.ModuleBase).Catalogue(data.Players);
+                        });
+                        if (session.Profile.Nation is not null)
+                            report.Run("work permit table", "Reading…", () => new WorkPermitTable(session.Memory, session.Profile, session.ModuleBase).Locate());
+                        if (session.Profile.YouthCandidates is not null)
+                            report.Run("youth candidate manager", "Reading…", () => session.YouthCandidates.FindManager());
+                        if (session.Profile.Proposals is not null)
+                            report.Run("transfer proposals", "Reading…", session.Proposals.EnsureLoaded);
+                        if (!data.ClauseIndexAttempted && session.Profile.Club?.TransferClauses is { Scan: true })
+                            report.Run("transfer clauses", "Reading…", session.EnsureTransferClausesLoaded);
+                    }),
+                    Task.Run(() => report.Run("person names", "Reading…", () => PersonNames(), () => personNames?.Count ?? 0)),
+                    Task.Run(() => report.Run("career plans", "Reading career plans…", () => WarmCareerCatalogue(data.Players), () => careerCatalogue?.Count ?? 0)),
+                    Task.Run(() =>
+                    {
+                        report.Run("future transfers", "Reading…", () => futureAllRows = ReadFutureTransferRows(data), () => futureAllRows.Count);
+                        report.Run("retirements", "Reading…", () => retiringAllRows = ReadRetiringRows(data), () => retiringAllRows.Count);
+                    }),
+                    Task.Run(LoadSites),
+                ];
+                Task.WaitAll(jobs);
             }
             else
             {
-                report.Run("academy site", "Reading…", () => session.GoldenGenerationHook.FindSite(null));
-                report.Run("development site", "Reading…", () => session.AcceleratedDevelopment.FindSite(null));
+                languageCatalogue = report.Read("languages", "Reading…", () =>
+                {
+                    using var reads = new BulkReadScope(session.Memory);
+                    return new LanguageReader(reads.Memory, session.Profile, session.ModuleBase).Catalogue(data.Players);
+                });
+                report.Run("person names", "Reading…", () => PersonNames(), () => personNames?.Count ?? 0);
+                report.Run("career plans", "Reading career plans…", () => WarmCareerCatalogue(data.Players), () => careerCatalogue?.Count ?? 0);
+                report.Run("future transfers", "Reading…", () => futureAllRows = ReadFutureTransferRows(data), () => futureAllRows.Count);
+                report.Run("retirements", "Reading…", () => retiringAllRows = ReadRetiringRows(data), () => retiringAllRows.Count);
+                if (session.Profile.Proposals is not null)
+                    report.Run("transfer proposals", "Reading…", session.Proposals.EnsureLoaded);
+                if (!data.ClauseIndexAttempted && session.Profile.Club?.TransferClauses is { Scan: true })
+                    report.Run("transfer clauses", "Reading…", session.EnsureTransferClausesLoaded);
+                if (session.Profile.YouthCandidates is not null)
+                    report.Run("youth candidate manager", "Reading…", () => session.YouthCandidates.FindManager());
+                if (session.Profile.Nation is not null)
+                    report.Run("work permit table", "Reading…", () => new WorkPermitTable(session.Memory, session.Profile, session.ModuleBase).Locate());
+                LoadSites();
             }
+            personNames ??= [];
+            careerCatalogue ??= [];
             report.Run("freezer", "Reading…", () => backend.InitializeFreezer(data));
         });
 

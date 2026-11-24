@@ -47,8 +47,10 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
     {
         var values = new Dictionary<int, InMatchPlayerValues>();
         byte[] attributes = new byte[profile.Attributes.Values.Max() - firstAttribute + 1];
-        byte[] condition = new byte[2], morale = new byte[1];
-        foreach (var copy in fixture.Copies)
+        byte[] condition = new byte[2], live = new byte[4], morale = new byte[1];
+        var replicas = fixture.Copies.GroupBy(c => c.Fixture).Select(g => g.ToArray()).ToArray();
+        var active = SelectActiveReplica(replicas, condition, live, ct);
+        foreach (var copy in active is null ? fixture.Copies : active.Concat(replicas.Where(r => !ReferenceEquals(r, active)).SelectMany(r => r)))
         {
             ct.ThrowIfCancellationRequested();
             int uid = copy.Player.Id!.Value;
@@ -57,8 +59,7 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
             {
                 ValidateCopy(memory, copy, uid);
                 if (!memory.TryRead(At(copy, offsets.AttributeBase), attributes)) continue;
-                int? fitness = memory.TryRead(At(copy, offsets.Condition), condition)
-                    ? BinaryPrimitives.ReadUInt16LittleEndian(condition) / 100 : null;
+                int? fitness = ReadConditionPercent(copy, condition, live);
                 int? spirit = offsets.Morale is { } at && memory.TryRead(At(copy, at), morale) ? (sbyte)morale[0] : null;
                 values.Add(uid, new(profile.Attributes.ToDictionary(pair => pair.Key,
                     pair => AttributeScaling.ToDisplay(attributes[pair.Value - firstAttribute], profile.AttributeScale)), fitness, spirit));
@@ -67,6 +68,57 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
             catch (StaleObjectException) { }
         }
         return values;
+    }
+
+    InMatchCopy[]? SelectActiveReplica(InMatchCopy[][] replicas, byte[] condBuf, byte[] liveBuf, CancellationToken ct)
+    {
+        InMatchCopy[]? firstTier1 = null;
+        foreach (var replica in replicas)
+        {
+            int tier2 = 0, tier1 = 0;
+            foreach (var copy in replica)
+            {
+                ct.ThrowIfCancellationRequested();
+                try { ValidateCopy(memory, copy, copy.Player.Id!.Value); }
+                catch (MemoryAccessException) { continue; }
+                catch (StaleObjectException) { continue; }
+                if (!memory.TryRead(At(copy, offsets.Condition), condBuf)) continue;
+                ushort condU16 = BinaryPrimitives.ReadUInt16LittleEndian(condBuf);
+                if (condU16 == 0) continue;
+                tier1++;
+                ushort initialU16 = memory.TryRead(At(copy, offsets.InitialCondition), condBuf)
+                    ? BinaryPrimitives.ReadUInt16LittleEndian(condBuf) : (ushort)0;
+                if (initialU16 == 0) continue;
+                if (offsets.LiveCondition is { } liveOff)
+                {
+                    if (memory.TryRead(At(copy, liveOff), liveBuf) &&
+                        BinaryPrimitives.ReadUInt32LittleEndian(liveBuf) is > 0 and var liveU32 &&
+                        liveU32 < (uint)initialU16 * 100)
+                        tier2++;
+                }
+                else if (condU16 < initialU16)
+                    tier2++;
+            }
+            if (tier2 > 0) return replica;
+            firstTier1 ??= tier1 > 0 ? replica : null;
+        }
+        return firstTier1 ?? replicas.FirstOrDefault();
+    }
+
+    int? ReadConditionPercent(InMatchCopy copy, byte[] condBuf, byte[] liveBuf)
+    {
+        if (memory.TryRead(At(copy, offsets.Condition), condBuf) &&
+            BinaryPrimitives.ReadUInt16LittleEndian(condBuf) is > 0 and var condU16)
+        {
+            if (offsets.LiveCondition is { } liveOff && memory.TryRead(At(copy, liveOff), liveBuf) &&
+                BinaryPrimitives.ReadUInt32LittleEndian(liveBuf) is > 0 and var liveU32)
+                return Math.Clamp((int)Math.Round(liveU32 / 10_000.0), 0, 100);
+            return condU16 / 100;
+        }
+        if (memory.TryRead(At(copy, offsets.InitialCondition), condBuf) &&
+            BinaryPrimitives.ReadUInt16LittleEndian(condBuf) is > 0 and var initU16)
+            return initU16 / 100;
+        return null;
     }
 
     public IReadOnlyList<InMatchFixture> FindFixtures(IReadOnlyList<PlayerRecord> players, CancellationToken ct = default)
@@ -79,7 +131,7 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
         byte[] header = new byte[headerSize];
         byte[] person = new byte[offsets.PersonUid + sizeof(int)];
         var copies = new List<InMatchCopy>();
-        foreach (var hit in HeapVtableScanner.ScanReadable(memory, moduleBase + offsets.PlayerVtable, ct))
+        foreach (var hit in HeapVtableScanner.ScanReadableSmallFirst(memory, moduleBase + offsets.PlayerVtable, 4UL * 1024 * 1024, 16UL * 1024 * 1024, ct))
         {
             ct.ThrowIfCancellationRequested();
             if (!memory.TryRead(hit.Address, header) || Word(header, 0) != hit.Vtable ||
@@ -166,6 +218,8 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
             start = end;
         }
         byte[]? conditionBytes = changes.ConditionPercent is { } condition ? BitConverter.GetBytes((ushort)(condition * 100)) : null;
+        byte[]? liveConditionBytes = changes.ConditionPercent is { } livePct && offsets.LiveCondition is not null
+            ? BitConverter.GetBytes((uint)(livePct * 10_000)) : null;
         int? positionOffset = position is { } pos ? offsets.PositionBase + profile.Positions[pos] - firstPosition : null;
         var touched = new HashSet<int>();
         int copies = 0;
@@ -192,7 +246,17 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
                     ulong initial = At(copy, offsets.InitialCondition);
                     ulong effective = At(copy, offsets.Condition);
                     changed |= Stage(staged, initial, staged.Read(initial, conditionBytes.Length), conditionBytes);
-                    changed |= Stage(staged, effective, staged.Read(effective, conditionBytes.Length), conditionBytes);
+                    byte[] condBefore = staged.Read(effective, conditionBytes.Length);
+                    if (offsets.LiveCondition is not { } liveOff)
+                    {
+                        changed |= Stage(staged, effective, condBefore, conditionBytes);
+                    }
+                    else if (BinaryPrimitives.ReadUInt16LittleEndian(condBefore) > 0)
+                    {
+                        changed |= Stage(staged, effective, condBefore, conditionBytes);
+                        ulong live = At(copy, liveOff);
+                        changed |= Stage(staged, live, staged.Read(live, liveConditionBytes!.Length), liveConditionBytes);
+                    }
                 }
                 if (changes.Morale is { } morale && offsets.Morale is { } moraleOffset)
                 {

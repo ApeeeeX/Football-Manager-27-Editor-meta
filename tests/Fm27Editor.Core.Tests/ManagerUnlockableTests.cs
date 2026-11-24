@@ -58,11 +58,30 @@ public class ManagerUnlockableTests
         var repo = new StaffRepository(world.Memory, profile, TestWorld.ModuleBase);
         var writer = new StaffWriter(world.Memory, profile, TestWorld.ModuleBase);
         var before = repo.Reload(address)!;
-        Assert.Equal(new ManagerUnlockableState(0, false, false), before.ManagerUnlockables);
+        Assert.Equal(new ManagerUnlockableState(0, false, false, false, false), before.ManagerUnlockables);
 
         writer.SetManagerUnlockables(before, allPlayersInterested: null, becomeUnsackable: true);
         Assert.Equal(2u, BitConverter.ToUInt32(manager, 0x3FC));
-        Assert.Equal(new ManagerUnlockableState(2, false, true), repo.Reload(address)!.ManagerUnlockables);
+        Assert.Equal(new ManagerUnlockableState(2, false, true, false, false), repo.Reload(address)!.ManagerUnlockables);
+    }
+
+    [Theory]
+    [InlineData("27.1.0+2505117-steam.json", 0x4E2170Cu)]
+    [InlineData("27.1.0+2505117-gamepass.json", 0x4A471CCu)]
+    public void Squad_anytime_flags_set_bits_100_and_200_on_windows(string build, uint vtable)
+    {
+        var profile = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", build));
+        var world = new TestWorld();
+        const ulong address = 0x6000_0000;
+        var manager = world.Memory.Map(address, 0x640);
+        TestWorld.Set64(manager, 0, TestWorld.ModuleBase + vtable);
+        BitConverter.GetBytes(2002081897).CopyTo(manager, 0x440 + 0xC);
+        var repo = new StaffRepository(world.Memory, profile, TestWorld.ModuleBase);
+        var writer = new StaffWriter(world.Memory, profile, TestWorld.ModuleBase);
+        writer.SetManagerUnlockables(repo.Reload(address)!, null, null, squadRegistrationAnytime: true);
+        Assert.Equal(0x100u, BitConverter.ToUInt32(manager, 0x3FC));
+        writer.SetManagerUnlockables(repo.Reload(address)!, null, null, squadNumbersAnytime: true);
+        Assert.Equal(0x300u, BitConverter.ToUInt32(manager, 0x3FC));
     }
 
     /// <summary>Steam 27.1.0 macOS, 23/11/2026: the IGE's Allow Squad Registration Anytime changed staff + 0x3FC from 0 to 0x100,

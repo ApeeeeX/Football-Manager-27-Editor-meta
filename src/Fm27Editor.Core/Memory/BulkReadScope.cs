@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Fm27Editor.Core.Memory;
 
 /// <summary>
@@ -12,7 +14,7 @@ public sealed class BulkReadScope : IDisposable
     /// <summary>A read-only view. Nested scopes share the outer scope's cache and do not dispose it.</summary>
     public IProcessMemory Memory { get; }
 
-    public BulkReadScope(IProcessMemory memory) : this(memory, 32768) { }
+    public BulkReadScope(IProcessMemory memory) : this(memory, 4096) { }
 
     internal BulkReadScope(IProcessMemory memory, int pageCount, int failedPageHintCount = 0)
     {
@@ -66,9 +68,9 @@ internal sealed class ReadAheadMemory(IProcessMemory source, int pageCount, int 
                     spare = pages[oldest];
                     pages.Remove(oldest);
                 }
-                bytes = spare ?? new byte[PageSize];
+                bytes = spare ?? ArrayPool<byte>.Shared.Rent(PageSize);
                 spare = null;
-                if (!source.TryRead(page, bytes))
+                if (!source.TryRead(page, bytes.AsSpan(0, PageSize)))
                 {
                     spare = bytes;
                     if (failedPageHintCount > 0 && failedPages.Add(page))
@@ -133,60 +135,67 @@ internal sealed class ReadAheadMemory(IProcessMemory source, int pageCount, int 
                 spare = pages[oldest];
                 pages.Remove(oldest);
             }
-            var block = spare ?? new byte[PageSize];
+            var block = spare ?? ArrayPool<byte>.Shared.Rent(PageSize);
             spare = null;
-            data.CopyTo(block);
+            data.CopyTo(block.AsSpan(0, PageSize));
             pages.Add(page, block);
             order.Enqueue(page);
         }
 
         int i = 0;
-        while (i < sorted.Length)
+        try
         {
-            int gStart = i;
-            int gEnd = i;
-            while (gEnd + 1 < sorted.Length)
+            while (i < sorted.Length)
             {
-                ulong prev = sorted[gEnd];
-                ulong next = sorted[gEnd + 1];
-                if (next - prev > (ulong)(MaxGapPages + 1) * PageSize) break;
-                if ((next - sorted[gStart]) / PageSize + 1 > MaxRunPages) break;
-                gEnd++;
-            }
+                int gStart = i;
+                int gEnd = i;
+                while (gEnd + 1 < sorted.Length)
+                {
+                    ulong prev = sorted[gEnd];
+                    ulong next = sorted[gEnd + 1];
+                    if (next - prev > (ulong)(MaxGapPages + 1) * PageSize) break;
+                    if ((next - sorted[gStart]) / PageSize + 1 > MaxRunPages) break;
+                    gEnd++;
+                }
 
-            if (gEnd > gStart)
-            {
-                ulong groupStart = sorted[gStart];
-                int spanPages = (int)((sorted[gEnd] - groupStart) / PageSize + 1);
-                scratch ??= new byte[MaxRunPages * PageSize];
-                if (source.TryRead(groupStart, scratch.AsSpan(0, spanPages * PageSize)))
+                if (gEnd > gStart)
                 {
-                    for (int k = gStart; k <= gEnd; k++)
+                    ulong groupStart = sorted[gStart];
+                    int spanPages = (int)((sorted[gEnd] - groupStart) / PageSize + 1);
+                    scratch ??= ArrayPool<byte>.Shared.Rent(MaxRunPages * PageSize);
+                    if (source.TryRead(groupStart, scratch.AsSpan(0, spanPages * PageSize)))
                     {
-                        ulong page = sorted[k];
-                        int offsetPages = (int)((page - groupStart) / PageSize);
-                        StoreCachedPage(page, scratch.AsSpan(offsetPages * PageSize, PageSize));
-                    }
-                }
-                else
-                {
-                    int sub = gStart;
-                    while (sub <= gEnd)
-                    {
-                        ulong runStart = sorted[sub];
-                        int runCount = 1;
-                        while (sub + runCount <= gEnd && sorted[sub + runCount] == runStart + (ulong)runCount * PageSize)
-                            runCount++;
-                        if (runCount >= 2 && source.TryRead(runStart, scratch.AsSpan(0, runCount * PageSize)))
+                        for (int k = gStart; k <= gEnd; k++)
                         {
-                            for (int k = 0; k < runCount; k++)
-                                StoreCachedPage(runStart + (ulong)k * PageSize, scratch.AsSpan(k * PageSize, PageSize));
+                            ulong page = sorted[k];
+                            int offsetPages = (int)((page - groupStart) / PageSize);
+                            StoreCachedPage(page, scratch.AsSpan(offsetPages * PageSize, PageSize));
                         }
-                        sub += runCount;
+                    }
+                    else
+                    {
+                        int sub = gStart;
+                        while (sub <= gEnd)
+                        {
+                            ulong runStart = sorted[sub];
+                            int runCount = 1;
+                            while (sub + runCount <= gEnd && sorted[sub + runCount] == runStart + (ulong)runCount * PageSize)
+                                runCount++;
+                            if (runCount >= 2 && source.TryRead(runStart, scratch.AsSpan(0, runCount * PageSize)))
+                            {
+                                for (int k = 0; k < runCount; k++)
+                                    StoreCachedPage(runStart + (ulong)k * PageSize, scratch.AsSpan(k * PageSize, PageSize));
+                            }
+                            sub += runCount;
+                        }
                     }
                 }
+                i = gEnd + 1;
             }
-            i = gEnd + 1;
+        }
+        finally
+        {
+            if (scratch is not null) ArrayPool<byte>.Shared.Return(scratch);
         }
     }
 
@@ -195,7 +204,10 @@ internal sealed class ReadAheadMemory(IProcessMemory source, int pageCount, int 
 
     public void Dispose()
     {
+        if (disposed) return;
         disposed = true;
+        foreach (var arr in pages.Values) ArrayPool<byte>.Shared.Return(arr);
+        if (spare is not null) ArrayPool<byte>.Shared.Return(spare);
         pages.Clear();
         order.Clear();
         failedPages.Clear();

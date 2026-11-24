@@ -99,50 +99,116 @@ internal sealed class LoadedGameData(GameSession session)
         Task? metricsTask = null;
         try
         {
-            data.Players = report.Read("players", "Reading players…", () => session.Players.LoadAll());
-            foreach (var player in data.Players) player.GameDate = data.GameDate;
-            RegenIds.Current = RegenIds.FirstCreatedId(data.Players.Where(p => p.Id is not null).Select(p => p.Id!.Value));
-            metricsTask = Task.Run(() => report.Run("scouting metrics", "Reading scouting metrics…", () => ScoutingMetrics.Warm(data.Players)));
-            data.Clubs = report.Read("clubs", "Reading clubs…", () => session.LoadClubs(data.Players));
-            data.Nations = report.Read("nations", "Reading nations…", () => session.Nations.LoadAll());
-            if (session.Profile.Competition is not null)
-                data.Competitions = report.Read("competitions", "Reading competitions…", () => session.Competitions.LoadAll());
-            if (session.Profile.Staff is not null)
-                data.Staff = report.Read("staff", "Reading staff…", () => session.Staff.LoadAll());
-            if (session.Profile.Stadium is not null)
-                data.Stadiums = report.Read("stadiums", "Reading stadiums…", () => session.Stadiums.LoadAll());
-            if (session.Profile.Award is not null)
-                data.Awards = report.Read("awards", "Reading awards…", () => session.Awards.LoadAll());
-            if (Fm27Editor.Core.Officials.RefereeDirectory.Supported(session.Profile.Officials))
-                data.Referees = report.Read("referees", "Reading referees…", () => session.ReadReferees());
-            data.Cities = report.Read("cities", "Reading cities…", () => session.Cities.LoadAll());
-            if (session.Profile.Cities?.Links is not null)
+            if (session.Memory is IConcurrentMemoryReads)
             {
-                using var reads = new BulkReadScope(session.Memory);
-                var links = new CityLinks(reads.Memory, session.Profile, session.ModuleBase);
-                var catalogues = new Dictionary<CityLink, IReadOnlyList<CityLinkTarget>>();
-                foreach (var link in new[] { CityLink.Region, CityLink.Language, CityLink.Weather })
-                    catalogues[link] = report.Read($"city {link.ToString().ToLowerInvariant()} catalogue", "Reading cities…", () => links.Catalogue(data.Cities, link));
-                data.CityLinkCatalogues = catalogues;
+                Task[] loaders =
+                [
+                    Task.Run(() =>
+                    {
+                        data.Players = report.Read("players", "Reading players…", () => session.Players.LoadAll());
+                        foreach (var player in data.Players) player.GameDate = data.GameDate;
+                        RegenIds.Current = RegenIds.FirstCreatedId(data.Players.Where(p => p.Id is not null).Select(p => p.Id!.Value));
+                        metricsTask = Task.Run(() => report.Run("scouting metrics", "Reading scouting metrics…", () => ScoutingMetrics.Warm(data.Players)));
+                        data.Clubs = report.Read("clubs", "Reading clubs…", () => session.LoadClubs(data.Players));
+                    }),
+                    Task.Run(() =>
+                    {
+                        if (session.Profile.Staff is not null)
+                            data.Staff = report.Read("staff", "Reading staff…", () => session.Staff.LoadAll());
+                        data.Nations = report.Read("nations", "Reading nations…", () => session.Nations.LoadAll());
+                        if (session.Profile.Nation is not null)
+                            data.AgreementOrganisations = report.Read("agreement organisations", "Reading nations…", () =>
+                            {
+                                using var reads = new BulkReadScope(session.Memory);
+                                var agreements = new NationAgreements(reads.Memory, session.Profile, session.ModuleBase);
+                                var continents = session.NationLinks.Continents(data.Nations);
+                                var found = new Dictionary<ulong, AgreementTargetOption>();
+                                foreach (var nation in data.Nations)
+                                    foreach (int vector in new[] { NationAgreements.EuVector, NationAgreements.NonForeignVector })
+                                        foreach (var row in agreements.Read(nation.Address, vector, continents, data.Nations))
+                                            if (row.Kind == AgreementKind.Agreement && !string.IsNullOrWhiteSpace(row.TargetName))
+                                                found.TryAdd(row.Target, new(row.Target, row.TargetName));
+                                return found.Values.OrderBy(x => x.Name).ToArray();
+                            });
+                    }),
+                    Task.Run(() =>
+                    {
+                        if (session.Profile.Competition is not null)
+                            data.Competitions = report.Read("competitions", "Reading competitions…", () => session.Competitions.LoadAll());
+                        if (session.Profile.Stadium is not null)
+                            data.Stadiums = report.Read("stadiums", "Reading stadiums…", () => session.Stadiums.LoadAll());
+                        if (session.Profile.Award is not null)
+                            data.Awards = report.Read("awards", "Reading awards…", () => session.Awards.LoadAll());
+                        if (Fm27Editor.Core.Officials.RefereeDirectory.Supported(session.Profile.Officials))
+                            data.Referees = report.Read("referees", "Reading referees…", () => session.ReadReferees());
+                    }),
+                    Task.Run(() =>
+                    {
+                        data.Cities = report.Read("cities", "Reading cities…", () => session.Cities.LoadAll());
+                        if (session.Profile.Cities?.Links is not null)
+                        {
+                            using var reads = new BulkReadScope(session.Memory);
+                            var links = new CityLinks(reads.Memory, session.Profile, session.ModuleBase);
+                            var catalogues = new Dictionary<CityLink, IReadOnlyList<CityLinkTarget>>();
+                            foreach (var link in new[] { CityLink.Region, CityLink.Language, CityLink.Weather })
+                                catalogues[link] = report.Read($"city {link.ToString().ToLowerInvariant()} catalogue", "Reading cities…", () => links.Catalogue(data.Cities, link));
+                            data.CityLinkCatalogues = catalogues;
+                        }
+                    }),
+                ];
+                Task.WaitAll(loaders);
             }
-            if (session.Profile.Nation is not null)
-                data.AgreementOrganisations = report.Read("agreement organisations", "Reading nations…", () =>
+            else
+            {
+                data.Players = report.Read("players", "Reading players…", () => session.Players.LoadAll());
+                foreach (var player in data.Players) player.GameDate = data.GameDate;
+                RegenIds.Current = RegenIds.FirstCreatedId(data.Players.Where(p => p.Id is not null).Select(p => p.Id!.Value));
+                metricsTask = Task.Run(() => report.Run("scouting metrics", "Reading scouting metrics…", () => ScoutingMetrics.Warm(data.Players)));
+                data.Clubs = report.Read("clubs", "Reading clubs…", () => session.LoadClubs(data.Players));
+                data.Nations = report.Read("nations", "Reading nations…", () => session.Nations.LoadAll());
+                if (session.Profile.Competition is not null)
+                    data.Competitions = report.Read("competitions", "Reading competitions…", () => session.Competitions.LoadAll());
+                if (session.Profile.Staff is not null)
+                    data.Staff = report.Read("staff", "Reading staff…", () => session.Staff.LoadAll());
+                if (session.Profile.Stadium is not null)
+                    data.Stadiums = report.Read("stadiums", "Reading stadiums…", () => session.Stadiums.LoadAll());
+                if (session.Profile.Award is not null)
+                    data.Awards = report.Read("awards", "Reading awards…", () => session.Awards.LoadAll());
+                if (Fm27Editor.Core.Officials.RefereeDirectory.Supported(session.Profile.Officials))
+                    data.Referees = report.Read("referees", "Reading referees…", () => session.ReadReferees());
+                data.Cities = report.Read("cities", "Reading cities…", () => session.Cities.LoadAll());
+                if (session.Profile.Cities?.Links is not null)
                 {
                     using var reads = new BulkReadScope(session.Memory);
-                    var agreements = new NationAgreements(reads.Memory, session.Profile, session.ModuleBase);
-                    var continents = session.NationLinks.Continents(data.Nations);
-                    var found = new Dictionary<ulong, AgreementTargetOption>();
-                    foreach (var nation in data.Nations)
-                        foreach (int vector in new[] { NationAgreements.EuVector, NationAgreements.NonForeignVector })
-                            foreach (var row in agreements.Read(nation.Address, vector, continents, data.Nations))
-                                if (row.Kind == AgreementKind.Agreement && !string.IsNullOrWhiteSpace(row.TargetName))
-                                    found.TryAdd(row.Target, new(row.Target, row.TargetName));
-                    return found.Values.OrderBy(x => x.Name).ToArray();
-                });
+                    var links = new CityLinks(reads.Memory, session.Profile, session.ModuleBase);
+                    var catalogues = new Dictionary<CityLink, IReadOnlyList<CityLinkTarget>>();
+                    foreach (var link in new[] { CityLink.Region, CityLink.Language, CityLink.Weather })
+                        catalogues[link] = report.Read($"city {link.ToString().ToLowerInvariant()} catalogue", "Reading cities…", () => links.Catalogue(data.Cities, link));
+                    data.CityLinkCatalogues = catalogues;
+                }
+                if (session.Profile.Nation is not null)
+                    data.AgreementOrganisations = report.Read("agreement organisations", "Reading nations…", () =>
+                    {
+                        using var reads = new BulkReadScope(session.Memory);
+                        var agreements = new NationAgreements(reads.Memory, session.Profile, session.ModuleBase);
+                        var continents = session.NationLinks.Continents(data.Nations);
+                        var found = new Dictionary<ulong, AgreementTargetOption>();
+                        foreach (var nation in data.Nations)
+                            foreach (int vector in new[] { NationAgreements.EuVector, NationAgreements.NonForeignVector })
+                                foreach (var row in agreements.Read(nation.Address, vector, continents, data.Nations))
+                                    if (row.Kind == AgreementKind.Agreement && !string.IsNullOrWhiteSpace(row.TargetName))
+                                        found.TryAdd(row.Target, new(row.Target, row.TargetName));
+                        return found.Values.OrderBy(x => x.Name).ToArray();
+                    });
+            }
         }
         finally
         {
-            if (discovery is not null) discovery.GetAwaiter().GetResult();
+            if (discovery is not null)
+            {
+                if (!discovery.IsCompleted) report.Progress("Scanning transfer deals…");
+                discovery.GetAwaiter().GetResult();
+            }
             metricsTask?.GetAwaiter().GetResult();
         }
         report.Run("shared discovery join", "Reading…", () => _ = index.Value, () => index.Value.Count);
@@ -172,6 +238,8 @@ internal sealed class GameLoadReport(Action<string>? progress = null)
     readonly object gate = new();
     public IReadOnlyList<string> Errors { get { lock (gate) return errors.ToArray(); } }
     public bool Succeeded { get { lock (gate) return errors.Count == 0; } }
+
+    internal void Progress(string label) => progress?.Invoke(Loc.S(label));
 
     public IReadOnlyList<T> Read<T>(string stage, string label, Func<IReadOnlyList<T>> read)
     {

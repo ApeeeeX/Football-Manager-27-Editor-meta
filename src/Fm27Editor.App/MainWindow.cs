@@ -950,6 +950,12 @@ public sealed partial class MainWindow : Window
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
             FlightRecorder.Current?.Log("load", $"{(loaded && report.Succeeded ? "ready" : "incomplete")}: {elapsed.ElapsedMilliseconds} ms; errors {report.Errors.Count}");
             busy = false;
+            if (loaded)
+                _ = Task.Run(() =>
+                {
+                    System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                    GC.Collect(2, GCCollectionMode.Aggressive, blocking: false, compacting: true);
+                });
         }
     }
 

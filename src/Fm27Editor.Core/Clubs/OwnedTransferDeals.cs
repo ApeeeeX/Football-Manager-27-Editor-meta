@@ -72,14 +72,21 @@ internal static class OwnedTransferDeals
             if (unknown || selected >= 0) return null;
             selected = offset; copies = pointers; copiesBegin = candidateBegin; copyRecords = records;
         }
-        // An empty copy collection has no structural identity. Until its ownership can be independently
-        // identified on that session, do not interpret the primary table alone as a complete result.
+        // An empty copy collection has no structural identity unless its slot is explicitly verified by the profile.
+        if (selected >= 0 && o.CopyVector is { } expectedCopy && selected != expectedCopy) return null;
+        if (selected < 0 && o.CopyVector is { } copyOff && copyOff >= 8 && copyOff + 24 <= owner.Length && copyOff != o.OfferVector)
+        {
+            ulong b0 = BitConverter.ToUInt64(owner, copyOff), e0 = BitConverter.ToUInt64(owner, copyOff + 8), c0 = BitConverter.ToUInt64(owner, copyOff + 16);
+            bool validEmpty = (b0 == 0 && e0 == 0 && c0 == 0) || (Vector(owner.AsSpan(copyOff, 24), out _, out int emptyCount) && emptyCount == 0);
+            if (validEmpty) { selected = copyOff; copies = []; copiesBegin = 0; copyRecords = []; }
+        }
         if (selected < 0 || copies is null || copyRecords is null) return null;
         foreach (var entry in copyRecords) snapshots.Add(entry.Key, entry.Value);
         if (!memory.TryRead(moduleBase + root, pointer) || BitConverter.ToUInt64(pointer) != manager ||
             !Same(manager, owner) ||
             !Same(manager + (ulong)o.OfferVector, owner.AsSpan(o.OfferVector, 24)) ||
-            !Same(manager + (ulong)selected, owner.AsSpan(selected, 24)) || !Same(begin, primary) || !Same(copiesBegin, copies)) return null;
+            !Same(manager + (ulong)selected, owner.AsSpan(selected, 24)) || !Same(begin, primary) ||
+            (copiesBegin != 0 && !Same(copiesBegin, copies))) return null;
         // Recheck uncached records: a cached page must never certify a live mutation as stable.
         foreach (var (address, record) in snapshots)
             if (!Same(address, record)) return null;

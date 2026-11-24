@@ -197,6 +197,28 @@ internal static class ClubAdditionalStaffCard
             setInvalid(field, true);
         };
 
+        nud.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != NumericUpDown.TextProperty || isUpdating() || internalSync) return;
+            var rawText = nud.Text?.Trim();
+            if (string.IsNullOrEmpty(rawText))
+            {
+                setInvalid(field, true);
+                return;
+            }
+            if (decimal.TryParse(rawText, NumberStyles.Number, CultureInfo.CurrentCulture, out var parsed) ||
+                decimal.TryParse(rawText, NumberStyles.Number, CultureInfo.InvariantCulture, out parsed))
+            {
+                int clamped = ClampValue(parsed, max);
+                setInvalid(field, false);
+                stageValue(field, clamped == baseVal ? null : clamped);
+            }
+            else
+            {
+                setInvalid(field, true);
+            }
+        };
+
         nud.LostFocus += (_, _) =>
         {
             if (isUpdating() || internalSync) return;

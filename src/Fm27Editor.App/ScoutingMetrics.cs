@@ -8,10 +8,37 @@ internal static class ScoutingMetrics
 {
     sealed class Entry(PlayerRecord player)
     {
-        readonly Lazy<int> rca = new(() => RcaCalculator.Calculate(player));
-        public int Rca => rca.Value;
-        readonly Lazy<RoleScore> bestRole = new(() => RoleScores.BestFitRole(player));
-        public RoleScore BestRole => bestRole.Value;
+        int rca;
+        bool hasRca;
+        RoleScore bestRole;
+        bool hasBestRole;
+
+        public int Rca
+        {
+            get
+            {
+                if (Volatile.Read(ref hasRca)) return rca;
+                lock (this)
+                {
+                    if (!hasRca) { rca = RcaCalculator.Calculate(player); Volatile.Write(ref hasRca, true); }
+                    return rca;
+                }
+            }
+        }
+
+        public RoleScore BestRole
+        {
+            get
+            {
+                if (Volatile.Read(ref hasBestRole)) return bestRole;
+                lock (this)
+                {
+                    if (!hasBestRole) { bestRole = RoleScores.BestFitRole(player); Volatile.Write(ref hasBestRole, true); }
+                    return bestRole;
+                }
+            }
+        }
+
         public DateOnly? Date;
         public int? Floor;
         public PersonalityClassification? Personality;
@@ -31,8 +58,6 @@ internal static class ScoutingMetrics
         }
     }
     public static void Reset() => entries = new();
-    public static void Warm(IEnumerable<PlayerRecord> players)
-    {
-        foreach (var player in players) { _ = Get(player); _ = Personality(player); }
-    }
+    public static void Warm(IEnumerable<PlayerRecord> players) =>
+        Parallel.ForEach(players, player => { _ = Get(player); _ = Personality(player); });
 }

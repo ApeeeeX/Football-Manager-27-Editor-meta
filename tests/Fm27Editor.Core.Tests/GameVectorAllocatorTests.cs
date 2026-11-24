@@ -56,4 +56,30 @@ public class GameVectorAllocatorTests
     [Fact]
     public void Allocator_with_a_size_header_is_refused()
         => Assert.Throws<MemoryAccessException>(() => GameVectorAllocator.BlockBytes(Game(header: 16), Offsets, Module, 1560));
+
+    [Theory]
+    [InlineData(0, 0x800)]
+    [InlineData(16, null)]
+    public void Windows_msvc_pool_layout_rounds_up_and_rejects_pool_headers(int poolHeader, int? expectedBytes)
+    {
+        // Windows 27.1.0 Steam/Game Pass MSVC pool struct places poolCapacity at +0x74 and poolHeader at +0x78.
+        var winOffsets = new VectorAllocatorOffsets(0x5878D48, 0x18, 0x34, 0x30, 0x74, 0x78);
+        var memory = new FakeMemory();
+        var allocator = memory.Map(Module + winOffsets.InstanceRva, 0x40);
+        BitConverter.GetBytes(Pools).CopyTo(allocator, 0x18);
+        BitConverter.GetBytes(Pools + 4097UL * 8).CopyTo(allocator, 0x20);
+        BitConverter.GetBytes(0).CopyTo(allocator, 0x30);
+        allocator[0x34] = 1;
+        var pools = memory.Map(Pools, 4097 * 8);
+        BitConverter.GetBytes(Pool1560).CopyTo(pools, 1560 * 8);
+        var p1560 = memory.Map(Pool1560, 0x80);
+        BitConverter.GetBytes(0x800).CopyTo(p1560, 0x70);
+        BitConverter.GetBytes(0x800).CopyTo(p1560, 0x74);
+        BitConverter.GetBytes(poolHeader).CopyTo(p1560, 0x78);
+
+        if (expectedBytes is { } expected)
+            Assert.Equal(expected, GameVectorAllocator.BlockBytes(memory, winOffsets, Module, 1560));
+        else
+            Assert.Throws<MemoryAccessException>(() => GameVectorAllocator.BlockBytes(memory, winOffsets, Module, 1560));
+    }
 }

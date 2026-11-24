@@ -393,6 +393,7 @@ public sealed partial class MainWindow : IClubPanels
             clubScalarSections.Clear();
             clubChangeCount = 0;
             SetActiveTabDirty(false);
+            if (clubScreen.SaveButton is { } disabledSave) disabledSave.IsEnabled = false;
             return;
         }
 
@@ -432,6 +433,8 @@ public sealed partial class MainWindow : IClubPanels
         }
 
         SetActiveTabDirty(total > 0 || invalidTotal > 0);
+        if (clubScreen.SaveButton is { } saveBtn)
+            saveBtn.IsEnabled = invalidTotal == 0 && (draft.CanSave || ((IClubPanels)this).HasPending(club));
     }
 
     void IClubPanels.BuildClub(ClubEntry club, ClubDraft draft)
@@ -658,6 +661,10 @@ public sealed partial class MainWindow : IClubPanels
         clubEditorPanel.Children.Add(UiKit.TwoColumnMasonry(items, gap: 14));
     }
 
+    /// <summary>Squad members actually playing at <paramref name="team"/> (excludes contracted players loaned out to another team).</summary>
+    static IReadOnlyList<PlayerRecord> PlayingSquad(GameSession session, ulong team) =>
+        session.ReadSquad(team).Where(p => p.PlayingTeamAddress == 0 || p.PlayingTeamAddress == team).ToList();
+
     /// <summary>The team's Tactical Understanding bars, each dragged or typed for the whole squad; null when its tactics are unknown.</summary>
     Control? BuildTeamTacticsCard(GameSession session, ClubEntry club, ulong team)
     {
@@ -666,7 +673,7 @@ public sealed partial class MainWindow : IClubPanels
         IReadOnlyList<PlayerRecord> squad;
         int[]? values;
         int? roles;
-        try { squad = session.ReadSquad(team); values = tactics.Read(team, squad); roles = tactics.ReadRoles(squad); }
+        try { squad = PlayingSquad(session, team); values = tactics.Read(team, squad); roles = tactics.ReadRoles(squad, team); }
         catch (Exception ex) { status.Text = UserMessage.For(ex); return null; }
         if (values is null) return null;
         var refreshers = new List<Action<int[], int?>>();
@@ -674,7 +681,7 @@ public sealed partial class MainWindow : IClubPanels
         {
             if (tactics.Read(team, squad) is { } now)
             {
-                int? roleNow = tactics.ReadRoles(squad);
+                int? roleNow = tactics.ReadRoles(squad, team);
                 foreach (var refresh in refreshers) refresh(now, roleNow);
             }
         }
@@ -758,7 +765,7 @@ public sealed partial class MainWindow : IClubPanels
         IReadOnlyList<PlayerRecord> squad = [];
         if (team is not null)
         {
-            try { squad = session.ReadSquad(team.Address); } catch { }
+            try { squad = PlayingSquad(session, team.Address); } catch { }
         }
         var writer = new TeamCohesionWriter(session.Memory, session.Profile, session.ModuleBase);
         void Refresh()

@@ -18,7 +18,7 @@ namespace Fm27Editor.Core.Players;
 public sealed record ProposalOffsets(uint ListRootRva, int ListOffset, int Person, int Buyer, int Seller, int Value, int Id, int Status, int PlayerIds,
     uint TransferVtable, uint LoanVtable, uint TrialVtable, uint BClubMoveVtable,
     uint? ManagerRva = null, uint? ManagerVtable = null, int OfferVector = 0x20,
-    int OfferSerial = 0x7D4, int? ChangedFlag = 0x50)
+    int OfferSerial = 0x7D4, int? ChangedFlag = 0x50, int? CopyVector = null)
 {
     /// <summary>The primary list is the manager's ID-indexed vector rather than a separate compact list.</summary>
     internal bool ListIsIndexed => ManagerVtable is not null && ManagerRva == ListRootRva && OfferVector == ListOffset;
@@ -36,7 +36,8 @@ public sealed record ProposalOffsets(uint ListRootRva, int ListOffset, int Perso
             e.TryGetProperty("managerVtable", out _) ? (uint)Hex("managerVtable") : null,
             e.TryGetProperty("offerVector", out _) ? (int)Hex("offerVector") : 0x20,
             e.TryGetProperty("offerSerial", out _) ? (int)Hex("offerSerial") : 0x7D4,
-            e.TryGetProperty("changedFlag", out var cf) ? (cf.ValueKind == JsonValueKind.Null ? null : (int)Hex("changedFlag")) : 0x50);
+            e.TryGetProperty("changedFlag", out var cf) ? (cf.ValueKind == JsonValueKind.Null ? null : (int)Hex("changedFlag")) : 0x50,
+            e.TryGetProperty("copyVector", out var cv) ? (cv.ValueKind == JsonValueKind.Null ? null : (int)Hex("copyVector")) : null);
     }
 
     internal void Write(Utf8JsonWriter w)
@@ -50,6 +51,7 @@ public sealed record ProposalOffsets(uint ListRootRva, int ListOffset, int Perso
         if (OfferSerial != 0x7D4) w.WriteString("offerSerial", $"0x{OfferSerial:X}");
         if (ChangedFlag is null) w.WriteNull("changedFlag");
         else if (ChangedFlag != 0x50) w.WriteString("changedFlag", $"0x{ChangedFlag:X}");
+        if (CopyVector is { } copyVector) w.WriteString("copyVector", $"0x{copyVector:X}");
         w.WriteEndObject();
     }
 }

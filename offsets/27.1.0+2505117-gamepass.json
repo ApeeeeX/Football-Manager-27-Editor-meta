@@ -7,6 +7,8 @@
   "gameUiRva": "0x53FBA40",
   "gameUiVtable": "0x4878858",
   "gameUiLoadsOffset": "0x100",
+  "teamTactics": { "managersRva": "0x53EDC70", "entries": "0x20", "teamTree": "0x0", "treeHeadParent": "0x8", "treeRight": "0x10", "treeIsNil": "0x19", "treeKey": "0x20", "treeValue": "0x28", "tactics": "0x1018", "flagsA": "0xE0", "flagsB": "0xE8" },
+  "vectorAllocator": { "instanceRva": "0x53F8288", "pools": "0x18", "pooled": "0x34", "header": "0x30", "poolCapacity": "0x74", "poolHeader": "0x78" },
   "retirementManagerRva": "0x53EDBA0",
   "retirementManagerVtable": "0x4BFB820",
   "nationAppointmentVtable": "0x4898018",
@@ -437,6 +439,7 @@
     "projects": {
       "stadiumPlans": "0x28",
       "stadiumPlanExpiry": "0x38",
+      "boardRequests": { "holderType": "0x74", "requests": "0x78", "vector": "0x18", "type": "0x13C", "flags": "0x140", "targetDate": "0x12C", "completedDate": "0x130" },
       "managerRoot": "0x53FBBD0",
       "managerVtable": "0x4AFCAB8",
       "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8" },
@@ -523,7 +526,8 @@
       "clubKind": "0x1",
       "personKind": "0x3",
       "teamKind": "0x4",
-      "nameStadium": "0xE"
+      "nameStadium": "0xE",
+      "noTransfers": "0xE"
     },
     "financeLists": {
       "sponsorsPointer": "0x130",
@@ -1153,7 +1157,9 @@
     "managerUnlockables": {
       "flags": "0x3FC",
       "allPlayersInterested": "0x1",
-      "becomeUnsackable": "0x2"
+      "becomeUnsackable": "0x2",
+      "squadRegistrationAnytime": "0x100",
+      "squadNumbersAnytime": "0x200"
     },
     "allowances": {
       "teamManager": "0x80",

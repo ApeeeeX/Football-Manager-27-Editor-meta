@@ -113,6 +113,89 @@ public class InMatchAbilityTests
         Assert.Equal(profile.InMatch, OffsetProfile.Load(profile.ToJson()).InMatch);
     }
 
+    [Fact]
+    public void Windows_steam_profile_reads_live_condition_from_active_replica_and_updates_active_slots()
+    {
+        var profile = OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets", "27.1.0+2505117-steam.json"));
+        var im = Assert.IsType<InMatchOffsets>(profile.InMatch);
+        Assert.NotNull(im.LiveCondition);
+        Assert.Equal(im, OffsetProfile.Load(profile.ToJson()).InMatch);
+
+        var (editor, players, copies) = BuildSteamFixture(profile, replicaCount: 4);
+        var match = Assert.Single(editor.FindFixtures(players));
+        var values = editor.ReadPlayers(match);
+        Assert.Equal(75, values[1].ConditionPercent);
+        Assert.Equal(20, values[1].Morale);
+
+        var (kickoffEditor, kickoffPlayers, _) = BuildSteamFixture(profile, replicaCount: 2);
+        var kickoffMatch = Assert.Single(kickoffEditor.FindFixtures(kickoffPlayers));
+        var kickoffValues = kickoffEditor.ReadPlayers(kickoffMatch);
+        Assert.Equal(81, kickoffValues[1].ConditionPercent);
+        Assert.Equal(17, kickoffValues[1].Morale);
+
+        var applied = editor.Apply(match, new HashSet<int> { 1 }, new(false, new Dictionary<PlayerAttribute, int>(), 100, 18));
+        Assert.Equal(new InMatchResult(1, 4), applied);
+        Assert.Equal(0, ReadCondition(copies[0, 1], im.Condition));
+        Assert.Equal(10000, ReadCondition(copies[0, 1], im.InitialCondition));
+        Assert.Equal(18, copies[0, 1][im.Morale!.Value]);
+        foreach (int replica in new[] { 1, 2, 3 })
+        {
+            Assert.Equal(10000, ReadCondition(copies[replica, 1], im.InitialCondition));
+            Assert.Equal(10000, ReadCondition(copies[replica, 1], im.Condition));
+            Assert.Equal(1_000_000u, BinaryPrimitives.ReadUInt32LittleEndian(copies[replica, 1].AsSpan(im.LiveCondition!.Value)));
+            Assert.Equal(18, copies[replica, 1][im.Morale!.Value]);
+        }
+    }
+
+    static (InMatchAbility Editor, List<PlayerRecord> Players, byte[,][] Copies) BuildSteamFixture(OffsetProfile profile, int replicaCount)
+    {
+        var im = profile.InMatch!;
+        uint playerVt = profile.PlayerVtableRvas[0];
+        int personOffset = profile.Relations!.PlayerPerson;
+        var memory = new MatchMemory();
+        var players = new List<PlayerRecord>();
+        var copies = new byte[replicaCount, 16][];
+        (ushort CondU16, uint LiveU32, byte Morale)[] states =
+        [
+            (0, 1_000_000u, 17),
+            (8000, 807_900u, 17),
+            (7400, 745_422u, 20),
+            (7400, 742_167u, 19),
+        ];
+        for (int uid = 1; uid <= 15; uid++)
+        {
+            var club = uid < 8 ? United : Arsenal;
+            ulong address = 0x1000_0000 + (ulong)uid * 0x1000;
+            byte[] bytes = memory.Map(address, profile.PlayerObjectSize);
+            TestWorld.Set64(bytes, 0, TestWorld.ModuleBase + playerVt);
+            TestWorld.Set64(bytes, personOffset, TestWorld.ModuleBase + im.PersonVtable);
+            BitConverter.GetBytes(uid).CopyTo(bytes, personOffset + im.PersonUid);
+            players.Add(new PlayerRecord
+            {
+                Address = address, VtableRva = playerVt, Id = uid, FirstName = $"Player {uid}",
+                CurrentAbility = 140, PotentialAbility = 160, HomeReputation = 0, CurrentReputation = 0, WorldReputation = 0, Height = 180,
+                Contract = new ContractInfo(0, 0, null, null, club), AttributeScale = profile.AttributeScale, RawAttributes = new byte[54],
+                Positions = new byte[14], Personality = new byte[8],
+            });
+            for (int replica = 0; replica < replicaCount; replica++)
+            {
+                ulong matchAddress = 0x2000_0000 + (ulong)replica * 0x10_0000 + (ulong)uid * 0x2400;
+                var match = memory.Map(matchAddress, 0x2400, find: true);
+                copies[replica, uid] = match;
+                TestWorld.Set64(match, 0, TestWorld.ModuleBase + im.PlayerVtable);
+                TestWorld.Set64(match, im.Data, TestWorld.ModuleBase + im.DataVtable);
+                TestWorld.Set64(match, im.SourcePerson, address + (ulong)personOffset);
+                TestWorld.Set64(match, im.Fixture, 0x1_0000 + (ulong)replica * 0x1000);
+                TestWorld.Set64(match, im.Side, replica == 0 ? 0x2_0000UL : uid < 8 ? 0x2_1000UL : 0x2_2000UL);
+                TestWorld.Set16(match, im.InitialCondition, 8079);
+                BinaryPrimitives.WriteUInt16LittleEndian(match.AsSpan(im.Condition), states[replica].CondU16);
+                BinaryPrimitives.WriteUInt32LittleEndian(match.AsSpan(im.LiveCondition!.Value), states[replica].LiveU32);
+                match[im.Morale!.Value] = states[replica].Morale;
+            }
+        }
+        return (new InMatchAbility(memory, profile, TestWorld.ModuleBase), players, copies);
+    }
+
     static int ReadCondition(byte[] data, int offset) => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset));
 
     static OffsetProfile LoadProfile(bool touch) => OffsetProfile.LoadFile(Path.Combine(AppContext.BaseDirectory, "offsets",

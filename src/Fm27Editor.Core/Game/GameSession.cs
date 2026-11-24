@@ -40,7 +40,9 @@ public sealed class GameSession : IDisposable
         ulong at;
         if (_memory is WindowsProcessMemory wpm)
         {
-            at = RemoteCrtAllocator.Allocate(wpm, size);
+            // The game may hand this block back to a size pool that reuses it at the pool's capacity; see GameVectorAllocator.
+            int bytes = Profile.VectorAllocator is { } va ? GameVectorAllocator.BlockBytes(_memory, va, Game.ModuleBase, size) : size;
+            at = RemoteCrtAllocator.Allocate(wpm, bytes);
             wpm.OnAllocateWithOrigin?.Invoke(at, size, AllocationOrigin.GameHeap);
             wpm.OnAllocate?.Invoke(at, size);
             return at;

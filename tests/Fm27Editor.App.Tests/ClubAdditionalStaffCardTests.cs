@@ -148,6 +148,49 @@ public class ClubAdditionalStaffCardTests
         });
     }
 
+    [Fact]
+    public void Build_stages_typed_text_immediately_before_lost_focus_and_marks_empty_text_invalid()
+    {
+        var snapshot = ReadCapturedSnapshot();
+
+        AvaloniaTestThread.Run(() =>
+        {
+            var staged = new Dictionary<StaffAllowanceField, int>();
+            var invalid = new HashSet<StaffAllowanceField>();
+
+            var card = ClubAdditionalStaffCard.Build(
+                snapshot,
+                f => staged.TryGetValue(f, out int v) ? v : null,
+                (f, v) =>
+                {
+                    if (v is { } val) staged[f] = val;
+                    else staged.Remove(f);
+                },
+                (f, isInvalid) =>
+                {
+                    if (isInvalid) invalid.Add(f);
+                    else invalid.Remove(f);
+                },
+                () => false);
+
+            var inputs = card.GetLogicalDescendants()
+                .OfType<NumericUpDown>()
+                .ToDictionary(n => Assert.IsType<StaffAllowanceField>(n.Tag!));
+
+            var coaches = inputs[StaffAllowanceField.CoachesFirstTeam];
+            coaches.Text = "7";
+            Assert.Equal(7, staged[StaffAllowanceField.CoachesFirstTeam]);
+            Assert.Empty(invalid);
+
+            coaches.Text = "";
+            Assert.Contains(StaffAllowanceField.CoachesFirstTeam, invalid);
+
+            coaches.Text = "3";
+            Assert.Empty(invalid);
+            Assert.False(staged.ContainsKey(StaffAllowanceField.CoachesFirstTeam));
+        });
+    }
+
     [Theory]
     [InlineData(333)]
     [InlineData(433)]
