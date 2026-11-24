@@ -255,9 +255,10 @@ internal sealed class NationScreen(IScreenHost host)
         }
 
 
-        KitsAndColours(n, draft, changed, pages[3]);
+        var nationalTeams = session.NationTeams.Read(n.Address);
+        KitsAndColours(n, draft, changed, pages[3], nationalTeams.FirstOrDefault());
         Squads(n, pages[2]);
-        TeamReputations(n, draft, changed, team[1]);
+        TeamReputations(n, draft, changed, team[1], nationalTeams);
         RivalNations(n, draft, changed, nations, pages[4]);
         Preferences(n, draft, changed, nations, pages[5]);
         StaffPage(n, pages[6]);
@@ -293,15 +294,27 @@ internal sealed class NationScreen(IScreenHost host)
     }
 
     // Kits and Colours
-    void KitsAndColours(NationRecord n, NationDraft draft, Action changed, Panel page)
+    void KitsAndColours(NationRecord n, NationDraft draft, Action changed, Panel page, NationTeamRecord? firstTeam)
     {
         var session = Host.Backend.Session;
+        var rows = new List<(string Label, Control Control)>();
+        if (firstTeam is not null && session.NationTeams.AllowLicensedKits(firstTeam.Address) is { } kitNow)
+        {
+            var kitsAllowed = new CheckBox { IsChecked = draft.LicensedKits ?? kitNow };
+            Avalonia.Automation.AutomationProperties.SetName(kitsAllowed, Loc.S("Allow Licensed Kits"));
+            kitsAllowed.IsCheckedChanged += (_, _) =>
+            {
+                bool value = kitsAllowed.IsChecked == true;
+                draft.LicensedKits = value == kitNow ? null : value;
+                changed();
+            };
+            rows.Add((Loc.S("Allow Licensed Kits"), kitsAllowed));
+        }
         if (session.NationColours.Read(n.Address) is { } colours)
         {
             string backgroundOriginal = NationColours.Format(colours.Background);
             string foregroundOriginal = NationColours.Format(colours.Foreground);
             var pending = draft.Colours ?? (null, null);
-            var rows = new List<(string Label, Control Control)>();
             foreach (var (title, original, isBackground) in new[] { ("Background Colour", backgroundOriginal, true), ("Foreground Colour", foregroundOriginal, false) })
             {
                 var box = new TextBox { Text = (isBackground ? pending.Item1 : pending.Item2) ?? original, Width = 106, MinHeight = 24, Padding = new Thickness(5, 1), HorizontalContentAlignment = HorizontalAlignment.Left };
@@ -315,7 +328,10 @@ internal sealed class NationScreen(IScreenHost host)
                 };
                 rows.Add((Loc.S(title), ColourInputControl.Create(box)));
             }
-            var card = RowsCard("Colours", rows);
+        }
+        if (rows.Count > 0)
+        {
+            var card = RowsCard("Kits and Colours", rows);
             card.VerticalAlignment = VerticalAlignment.Top;
             card.Margin = new Thickness(0, 0, 0, 10);
             page.Children.Add(card);
@@ -368,24 +384,11 @@ internal sealed class NationScreen(IScreenHost host)
         page.Children.Add(UiKit.Card("Staff", Host.BuildStaffTable(lines, scope, Render)));
     }
     // Teams Reputation
-    void TeamReputations(NationRecord n, NationDraft draft, Action changed, Panel column)
+    void TeamReputations(NationRecord n, NationDraft draft, Action changed, Panel column, IReadOnlyList<NationTeamRecord> teams)
     {
-        var session = Host.Backend.Session;
-        var teams = session.NationTeams.Read(n.Address);
         if (teams.Count == 0) return;
         var stack = new StackPanel { Spacing = 0 };
         int idx = 0;
-        if (session.NationTeams.AllowLicensedKits(teams[0].Address) is { } kitNow)
-        {
-            var kits = new CheckBox { Content = Loc.S("Allow Licensed Kits"), IsChecked = draft.LicensedKits ?? kitNow, FontSize = 13, Foreground = UiKit.TextSecondary };
-            kits.IsCheckedChanged += (_, _) =>
-            {
-                bool value = kits.IsChecked == true;
-                draft.LicensedKits = value == kitNow ? null : value;
-                changed();
-            };
-            stack.Children.Add(new Border { Background = idx++ % 2 == 1 ? UiKit.SurfaceZebra : Brushes.Transparent, Padding = new Thickness(10, 4), Child = kits });
-        }
         foreach (var team in teams)
         {
             string original = team.Reputation.ToString(Inv);

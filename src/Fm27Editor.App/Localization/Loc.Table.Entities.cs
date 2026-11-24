@@ -8,6 +8,8 @@ public static partial class Loc
         m["All departments"] = "Tất cả bộ phận";
         m["Recruitment"] = "Tuyển trạch";
         m["Medical"] = "Y tế";
+        m["Recruitment Staff"] = "Ban tuyển trạch";
+        m["Medical Staff"] = "Ban y tế";
         m["New stadium"] = "Sân vận động mới";
         m["Announced · Due {0}"] = "Đã công bố · Dự kiến hoàn thành {0}";
         m["Planning · Review by {0}"] = "Đang lập kế hoạch · Dự kiến chốt hồ sơ {0}";
@@ -117,7 +119,6 @@ public static partial class Loc
         m["3 Years (0-21)"] = "3 năm (0–21 tuổi)";
         m["Goals Money"] = "Tiền thưởng ghi bàn";
         m["Role Scores"] = "Điểm vai trò";
-        m["Regens"] = "Cầu thủ tái sinh";
         m["Scouting Summary"] = "Đánh giá tuyển trạch";
         m["Best Role"] = "Vai trò tốt nhất";
         m["Best Fit"] = "Phù hợp nhất";
@@ -126,8 +127,6 @@ public static partial class Loc
         m["Core Mental"] = "Tinh thần cốt lõi";
         m["Role score must be 0-100"] = "Điểm vai trò phải từ 0 đến 100";
         m["Reading scouting metrics…"] = "Đang tính chỉ số tuyển trạch…";
-        m["Enter PA 1-200 and age 14-50"] = "Nhập PA từ 1–200 và tuổi từ 14–50";
-        m["{0} regen(s) matched"] = "Tìm thấy {0} cầu thủ tái sinh";
         m["{0} / {1} roles"] = "{0} / {1} vai trò";
         m["{0} [Negative]"] = "{0} [Tiêu cực]";
         m["Min %"] = "% tối thiểu";
@@ -137,18 +136,13 @@ public static partial class Loc
         m["Sort: RCA"] = "Sắp xếp: RCA";
         m["Sort: Best Role %"] = "Sắp xếp: % vai trò tốt nhất";
         m["Sort: Personality"] = "Sắp xếp: Tính cách";
-        m["Load players to scan regens."] = "Tải danh sách cầu thủ để tìm cầu thủ tái sinh.";
-        m["Regen ID floor unavailable for the current player list."] = "Chưa xác định được dải ID cầu thủ tái sinh trong danh sách này.";
-        m["Filter name, club, nation, pos..."] = "Lọc tên, CLB, quốc gia, vị trí…";
         m["Free agents only"] = "Chỉ cầu thủ tự do";
         m["Min PA"] = "PA tối thiểu";
         m["Max Age"] = "Tuổi tối đa";
-        m["Recommended Current Ability"] = "Năng lực hiện tại khuyến nghị (ước tính CE)";
+        m["Recommended Current Ability"] = "Năng lực hiện tại khuyến nghị";
         m["No qualified role available for RCA"] = "Không có vai trò đủ điều kiện để tính RCA";
         m["Required staff attributes are unavailable"] = "Thiếu chỉ số nhân sự cần thiết";
-        m["Role ratings unavailable on this staff record"] = "Không có điểm vai trò của nhân sự này";
-        m["Unavailable: Data Analyst RCA requires FM26's single Analysing Data attribute (split into 3 in FM27)"] = "Chưa tính được RCA chuyên viên phân tích dữ liệu: FM27 đã tách chỉ số này thành ba chỉ số.";
-        m["Unavailable (Data Analyst in FM27)"] = "Chưa hỗ trợ chuyên viên phân tích dữ liệu FM27";
+        m["Stored staff attributes are unavailable"] = "Không đọc được chỉ số gốc của nhân sự này";
         m["Unclassified"] = "Chưa phân loại";
         m["Best fit tactical role"] = "Vai trò chiến thuật phù hợp nhất";
         m["Best role score"] = "Điểm vai trò cao nhất";
@@ -253,6 +247,8 @@ public static partial class Loc
         m["In Possession"] = "Có bóng";
         m["Out of Possession"] = "Không bóng";
         m["Key for role"] = "Chỉ số chủ chốt";
+        m["Other role attributes"] = "Chỉ số vai trò khác";
+        m["No roles for this position and phase."] = "Không có vai trò cho vị trí và giai đoạn này.";
         m["Preferable"] = "Chỉ số bổ trợ";
         m["Lower is better"] = "Thấp hơn tốt hơn";
         m["Channel Forward"] = "Tiền đạo chạy vào khe";
@@ -449,6 +445,7 @@ public static partial class Loc
         m["Selected colour"] = "Màu đã chọn";
         m["Current colour"] = "Màu hiện tại";
         m["Graphics folder"] = "Thư mục Graphics";
+        m["Choose Graphics Folder…"] = "Chọn thư mục đồ họa…";
         m["Graphics: {0}"] = "Graphics: {0}";
         m["Not installed"] = "Chưa cài đặt";
         m["The downloaded file does not match the release checksum"] = "Tệp tải về không khớp mã kiểm tra checksum của bản phát hành";
@@ -1079,8 +1076,8 @@ public static partial class Loc
         m["Maximum three-year contracts for players over the age of X"] = "Hợp đồng tối đa 3 năm với cầu thủ trên X tuổi";
         m["Minimum X-year contracts for first-team players"] = "Hợp đồng tối thiểu X năm cho cầu thủ đội một";
 
-        // Hook Manager (Wonderkid Academy & Development Speed) & Freezer Manager
-        m["Hook Manager"] = "Quản lý Hook";
+        // Gameplay Tools (Wonderkid Academy & Development Speed) & Freezer Manager
+        m["Gameplay Tools"] = "Công cụ trong game";
         m["Freezer Manager"] = "Quản lý Đóng băng";
         m["Freezer unavailable"] = "Tính năng Đóng băng không khả dụng";
         m["Frozen"] = "Đang đóng băng";

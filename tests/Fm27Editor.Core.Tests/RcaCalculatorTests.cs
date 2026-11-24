@@ -9,6 +9,7 @@ public class RcaCalculatorTests
     {
         var raw = new byte[64];
         Array.Fill(raw, rawValue);
+        raw[(int)PlayerAttribute.RightFoot] = 100;
         var pos = new byte[14];
         foreach (var (p, r) in posRatings) pos[(int)p] = r;
         return new PlayerRecord
@@ -32,9 +33,8 @@ public class RcaCalculatorTests
     [Fact]
     public void UniformRawAttributesMatchFormulaForNaturalStriker()
     {
-        // Uniform raw 50 -> ((50 - 30) * 4 - 1) = 79
+        // The zero difference at 80 takes one downward step. At 79 the correction rounds to zero.
         Assert.Equal(79, RcaCalculator.Calculate(MakePlayer(50, (PlayerPosition.Striker, 20))));
-        // Uniform raw 80 -> ((80 - 30) * 4 - 1) = 199
         Assert.Equal(199, RcaCalculator.Calculate(MakePlayer(80, (PlayerPosition.Striker, 20))));
         // Clamp extremes
         Assert.Equal(1, RcaCalculator.Calculate(MakePlayer(1, (PlayerPosition.Striker, 20))));
@@ -42,23 +42,26 @@ public class RcaCalculatorTests
     }
 
     [Fact]
-    public void TierBlendingUsesAverageForNaturalAndSumsLowerTiers()
+    public void Uses_the_highest_position_score_after_diversity_and_familiarity()
     {
-        // Two Natural (20) positions still average to 79
-        var twoNaturals = MakePlayer(50, (PlayerPosition.Striker, 20), (PlayerPosition.AttackingMidCentral, 20));
-        Assert.Equal(79, RcaCalculator.Calculate(twoNaturals));
-
-        // 1 Natural (79*1) + 18 (79*0.025) + 15 (79*0.00625) + 12 (79*0.0015625) = 81.5921875 -> 82
         var multi = MakePlayer(50,
             (PlayerPosition.Goalkeeper, 20),
             (PlayerPosition.Striker, 18),
             (PlayerPosition.AttackingMidCentral, 15),
             (PlayerPosition.MidfielderCentral, 12));
-        Assert.Equal(82, RcaCalculator.Calculate(multi));
+        // GK paired with outfield positions puts diversity at its cap. The reference deducts floor(score / 4):
+        // at 105 this yields the same effective score of 79 as for a uniform single position.
+        var result = RcaCalculator.Analyze(multi);
+        Assert.Equal(105, result.BestRca);
+        Assert.All(result.Positions, position => Assert.Equal(105, position.UnweightedBase));
+        Assert.Equal(105, result.Positions.Single(p => p.Position == PlayerPosition.Striker).Contribution);
+        Assert.Equal(101, result.Positions.Single(p => p.Position == PlayerPosition.AttackingMidCentral).Contribution);
+        Assert.Equal(92, result.Positions.Single(p => p.Position == PlayerPosition.MidfielderCentral).Contribution);
+        Assert.Equal(1, RcaCalculator.Calculate(MakePlayer(50, (PlayerPosition.Striker, 1))));
     }
 
     [Fact]
-    public void WeakerFootUsesMinimumOfLeftAndRightFoot()
+    public void Either_side_can_be_the_weaker_foot_when_the_other_is_perfect()
     {
         var pLeftWeak = MakePlayer(50, (PlayerPosition.Striker, 20));
         pLeftWeak.RawAttributes[(int)PlayerAttribute.LeftFoot] = 40;
@@ -77,37 +80,45 @@ public class RcaCalculatorTests
     }
 
     [Fact]
-    public void StaffRcaHandlesUniformAttributesMissingRolesAndDataAnalyst()
+    public void Includes_regular_attributes_at_raw_100_and_ignores_zero_weight_attributes()
     {
-        var kind = new StaffKind(1, 2, 0x100, null, true);
-        var noRoles = new StaffRecord
+        var player = MakePlayer(50, (PlayerPosition.Striker, 20));
+        player.RawAttributes[(int)PlayerAttribute.Determination] = 100;
+        Assert.Equal(79, RcaCalculator.Calculate(player));
+        player.RawAttributes[(int)PlayerAttribute.Finishing] = 100;
+        // Independently calculated by the native reference translation for this synthetic striker.
+        Assert.Equal(99, RcaCalculator.Calculate(player));
+    }
+
+    [Fact]
+    public void StaffRcaUsesStoredBytesRoleRatingsAndTheDefaultRoles()
+    {
+        var staff = new StaffRecord
         {
             Address = 0x3000, StaffAddress = 0x2F00,
-            Attributes = new byte[64], Personality = new byte[8], Kind = kind,
-            Roles = null,
+            Attributes = new byte[64], Personality = new byte[8], Kind = new StaffKind(1, 2, 0x100, null, true),
         };
-        Assert.Null(StaffRcaCalculator.Calculate(noRoles).Score);
+        Assert.Null(StaffRcaCalculator.Calculate(staff).Score);
 
-        var rolesAnalyst = new byte[15];
-        rolesAnalyst[(int)StaffRole.DataAnalyst] = 15;
-        var analyst = noRoles with { Roles = rolesAnalyst };
-        var analystRes = StaffRcaCalculator.Calculate(analyst);
-        Assert.Null(analystRes.Score);
-        Assert.True(analystRes.HasUnavailableDataAnalystInput);
+        var block = new byte[52];
+        Array.Fill(block, (byte)80);
+        var fields = new Dictionary<StaffAttribute, (int Index, int Scale)>();
+        var manager = new byte[15];
+        Array.Fill(manager, (byte)1);
+        manager[(int)StaffRole.Manager] = 20;
+        var analyst = new byte[15];
+        Array.Fill(analyst, (byte)1);
+        analyst[(int)StaffRole.DataAnalyst] = 15;
 
-        // Uniform 16 on all staff attributes + adaptability 16 for Manager=20 -> round(16 * 10) = 160
-        var attrs = new byte[64];
-        Array.Fill(attrs, (byte)16);
-        var pers = new byte[8];
-        Array.Fill(pers, (byte)16);
-        var mgrRoles = new byte[15];
-        mgrRoles[(int)StaffRole.Manager] = 20;
-        var mgr = new StaffRecord
+        // Expected values come from the separate Python translation of the game's function.
+        Assert.Equal((179, StaffRole.Manager), Result(manager));
+        Assert.Equal((120, StaffRole.DataAnalyst), Result(analyst));
+        Assert.Equal((93, StaffRole.Coach), Result(null));
+
+        (int?, StaffRole?) Result(byte[]? roles)
         {
-            Address = 0x3100, StaffAddress = 0x3000,
-            Attributes = attrs, Personality = pers, Kind = kind,
-            Roles = mgrRoles,
-        };
-        Assert.Equal(160, StaffRcaCalculator.Calculate(mgr).Score);
+            var result = StaffRcaCalculator.Calculate(staff with { RcaInput = new(block, roles, fields) });
+            return (result.Score, result.PrimaryRole);
+        }
     }
 }

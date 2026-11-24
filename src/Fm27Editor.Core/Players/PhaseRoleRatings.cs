@@ -73,12 +73,13 @@ public sealed class PhaseRoleRatings
     };
     public IReadOnlyList<PhaseRole> At(PlayerPosition position, PossessionPhase phase) => Roles.Where(r => r.PositionGroup == Group(position) && r.Phase == phase).ToArray();
 
-    public double? Score(PlayerRecord player, PlayerPosition position, PhaseRole role)
+    public double? Score(PlayerRecord player, PlayerPosition position, PhaseRole role) =>
+        Score(player.RawAttributes, player.AttributeScale, position, (int)position < player.Positions.Length ? player.Position(position) : 0, role);
+
+    public double? Score(ReadOnlySpan<byte> attributes, int attributeScale, PlayerPosition position, int familiarity, PhaseRole role)
     {
         if (role.PositionGroup != Group(position) || !Roles.Contains(role)) throw new ArgumentException("Role does not belong to this position/catalog");
-        if (player.AttributeScale <= 0 || (int)position >= player.Positions.Length) return null;
-        int familiarity = player.Position(position);
-        if (familiarity is < 1 or > 20) return null;
+        if (attributeScale <= 0 || familiarity is < 1 or > 20) return null;
         double sum = 0, totalWeight = 0;
         foreach (int group in new[] { 0, 1, 2 })
         {
@@ -88,8 +89,8 @@ public sealed class PhaseRoleRatings
             double values = 0;
             foreach (var attr in attrs)
             {
-                if ((int)attr.Attribute >= player.RawAttributes.Length || player.Raw(attr.Attribute) == 0) return null;
-                int value = player.Attribute(attr.Attribute);
+                if ((int)attr.Attribute >= attributes.Length || attributes[(int)attr.Attribute] == 0) return null;
+                int value = AttributeScaling.ToDisplay(attributes[(int)attr.Attribute], attributeScale);
                 if (value is < 1 or > 20) return null;
                 values += group == 2 ? 20 - value : value;
             }

@@ -9,10 +9,10 @@ public sealed partial class MainWindow
 {
     void ResetLoadedGame()
     {
+        gameplayToolsWindow?.Close();
         SuspendEntityTabs();
         ScoutingMetrics.Reset();
         RegenIds.Current = null;
-        talentedRegensTab?.SetPlayers([]);
         generation++;
         searchVersion++;
         unifiedSearchVersion++;

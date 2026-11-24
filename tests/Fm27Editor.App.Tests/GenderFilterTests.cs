@@ -141,6 +141,23 @@ public sealed class GenderFilterTests
     }
 
     [Fact]
+    public void Player_controlled_manager_can_be_found_when_the_staff_gender_flag_disagrees_with_the_club()
+    {
+        var manager = new StaffRecord
+        {
+            Address = 1, StaffAddress = 2, Id = 2002078067, FirstName = "Quy", LastName = "Vu",
+            Gender = Gender.Women, Club = new ClubInfo(3, "Manchester United", "Man Utd", Gender.Men),
+            Kind = new StaffKind(0, 0, 0, 0, true), Attributes = [], Personality = [],
+        };
+        var row = new StaffRow(manager, manager.DisplayName, "Manager", "Man Utd", "", null, 169, 200);
+
+        Assert.True(StaffFilter.IsInUniversalSearch(manager));
+        Assert.Equal([row], StaffFilter.Apply([row], "quy vu", "Man Utd", "Manager", Gender.Men, excludeWomenClubs: true));
+        Assert.Equal([row], StaffFilter.Apply([row], "2002078067", null, null, Gender.Men, excludeWomenClubs: true));
+        Assert.Empty(StaffFilter.Apply([row], "quy vu", null, null, Gender.Women));
+    }
+
+    [Fact]
     public void AdvancedSearch_panels_show_named_gender_options_and_never_hide_rows_silently()
     {
         AvaloniaTestThread.Run(() =>

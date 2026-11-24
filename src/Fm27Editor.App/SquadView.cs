@@ -10,7 +10,10 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Fm27Editor.Core.Clubs;
+using Fm27Editor.Core.Game;
+using Fm27Editor.Core.History;
 using Fm27Editor.Core.Players;
+using Fm27Editor.Core.Staff;
 
 namespace Fm27Editor.App;
 
@@ -18,6 +21,12 @@ public sealed partial class MainWindow
 {
     int selectedSquadTeamIndex;
     SquadPlayerRow? selectedSquadRow;
+    readonly Dictionary<ulong, SquadRulesDraft> squadRuleDrafts = [];
+
+    sealed record SquadRulesDraft(StaffRecord Manager, bool? Registration = null, bool? Numbers = null)
+    {
+        public int Count => (Registration.HasValue ? 1 : 0) + (Numbers.HasValue ? 1 : 0);
+    }
 
     /// <summary>The name a squad tab uses for the i-th of a club's ordered teams: First team, Reserves, U21, U18 or Team n.</summary>
     static string SquadTeamLabel(IReadOnlyList<TeamEntry> orderedTeams, int i)
@@ -61,6 +70,8 @@ public sealed partial class MainWindow
         });
         teamBar.Margin = new Thickness(0, 0, 0, 10);
         clubEditorPanel.Children.Add(teamBar);
+        if (BuildSquadRules(backend.Session, club) is { } rules)
+            clubEditorPanel.Children.Add(rules);
 
         var curTeam = orderedTeams[selectedSquadTeamIndex];
         var allLoadedPlayers = rows.OfType<PlayerRecord>().ToList();
@@ -76,6 +87,72 @@ public sealed partial class MainWindow
         var layoutGrid = BuildSquadGridAndActions(getSquad, isNation: false, out refreshSquad, youthPlayers, club.Address);
         clubEditorPanel.Children.Add(new Border { Margin = new Thickness(8, 0, 0, 0), Child = layoutGrid });
         return true;
+    }
+
+    Control? BuildSquadRules(GameSession session, ClubEntry club)
+    {
+        if (FindHumanClubManager(session, club.Address) is not { ManagerUnlockables: { } flags } manager ||
+            (flags.SquadRegistrationAnytime is null && flags.SquadNumbersAnytime is null))
+            return null;
+
+        var draft = squadRuleDrafts.GetValueOrDefault(club.Address);
+        if (draft is null || draft.Manager.Id != manager.Id || draft.Manager.StaffAddress != manager.StaffAddress)
+            draft = new(manager);
+        var baseline = draft.Manager.ManagerUnlockables!;
+        var fields = new StackPanel { Spacing = 6, Margin = new Thickness(10, 6) };
+
+        void AddRule(string label, bool? original, bool? pending, Func<SquadRulesDraft, bool?, SquadRulesDraft> stage)
+        {
+            if (original is not { } wasEnabled) return;
+            fields.Children.Add(BuildSquadRuleRow(label, pending ?? wasEnabled, session.CanWrite, enabled =>
+            {
+                draft = stage(draft, enabled == wasEnabled ? null : enabled);
+                if (draft.Count == 0) squadRuleDrafts.Remove(club.Address);
+                else squadRuleDrafts[club.Address] = draft;
+                UpdateClubStatusFromDraft();
+            }));
+        }
+
+        AddRule("Squad Registration Anytime", baseline.SquadRegistrationAnytime, draft.Registration,
+            (current, value) => current with { Registration = value });
+        AddRule("Squad Numbers Anytime", baseline.SquadNumbersAnytime, draft.Numbers,
+            (current, value) => current with { Numbers = value });
+        var card = UiKit.Card("Squad Rules", fields);
+        card.Margin = new Thickness(0, 0, 0, 10);
+        return card;
+    }
+
+    internal static Grid BuildSquadRuleRow(string label, bool enabled, bool editable, Action<bool> stage)
+    {
+        var choice = new ComboBox
+        {
+            ItemsSource = new[] { Loc.S("Off"), Loc.S("On") },
+            SelectedIndex = enabled ? 1 : 0, Width = 88, MaxDropDownHeight = 120, IsEnabled = editable,
+        };
+        Avalonia.Automation.AutomationProperties.SetName(choice, Loc.S(label));
+        choice.SelectionChanged += (_, _) =>
+        {
+            if (choice.SelectedIndex >= 0) stage(choice.SelectedIndex == 1);
+        };
+        var name = Loc.BindText(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, Foreground = UiKit.TextSecondary,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0),
+        }, label);
+        return UiKit.ActionRow(name, choice);
+    }
+
+    int SaveSquadRules(GameSession session, ClubEntry club)
+    {
+        if (!squadRuleDrafts.TryGetValue(club.Address, out var draft)) return 0;
+        var manager = FindHumanClubManager(session, club.Address);
+        if (manager?.Id != draft.Manager.Id || manager.StaffAddress != draft.Manager.StaffAddress)
+            throw new StaleObjectException("The club's manager changed since the squad rules were read.");
+
+        using (ChangeContext.Describe("Squad Rules"))
+            session.StaffWriter.SetManagerUnlockables(draft.Manager, null, null, draft.Registration, draft.Numbers);
+        squadRuleDrafts.Remove(club.Address);
+        return draft.Count;
     }
 
     Control BuildSquadGridAndActions(

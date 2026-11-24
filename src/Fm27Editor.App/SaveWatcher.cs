@@ -142,6 +142,7 @@ public sealed partial class MainWindow
         staleHeading.Text = Loc.S(heading);
         if (staleOverlay is not null) staleOverlay.IsVisible = true;
         favouritesWindow?.Close();
+        gameplayToolsWindow?.Close();
         status.Text = Loc.S("Press Load Game to read the new save");
     }
 
@@ -200,7 +201,7 @@ public sealed partial class MainWindow
         await Task.Run(() => report.Run("academy cleanup", "Reading…", () => switchedOff = backend.Session.GoldenGenerationHook.SwitchOff()));
         if (switchedOff)
             ShowNotice("Wonderkid Academy switched off",
-                "A save was loaded, so Wonderkid Academy was switched off. Your settings are kept: switch it on again in the Hook Manager if you want it for this save.",
+                "A save was loaded, so Wonderkid Academy was switched off. Your settings are kept. You can turn it on again in Gameplay Tools.",
                 ("OK", true, null));
 
         bool boardRestored = false;
@@ -217,7 +218,7 @@ public sealed partial class MainWindow
         {
             forceBoardRequestChanged?.Invoke();
             ShowNotice("Force Board Request switched off",
-                "A save was loaded, so Force Board Request was switched off. Switch it on again in Club → Information or Hook Manager if you want it for this save.",
+                "A save was loaded, so Force Board Request was switched off. You can turn it on again in Gameplay Tools.",
                 ("OK", true, null));
         }
     }

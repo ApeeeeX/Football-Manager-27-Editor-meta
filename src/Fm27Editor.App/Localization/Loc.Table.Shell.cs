@@ -16,7 +16,15 @@ public static partial class Loc
         m["Advanced Search"] = "Tìm kiếm nâng cao";
         m["Mass Edit (Ctrl+M)"] = "Chỉnh sửa hàng loạt (Ctrl+M)";
         m["Edit History"] = "Lịch sử chỉnh sửa";
-        m["Hook Manager (Wonderkid Academy & Development Speed)"] = "Quản lý Hook (Học viện Thần đồng & Tốc độ phát triển)";
+        m["Gameplay Tools (Wonderkid Academy & Development Speed)"] = "Công cụ trong game (Học viện Thần đồng & Tốc độ phát triển)";
+        m["Your Manager"] = "HLV của bạn";
+        m["No player-controlled manager is currently managing a team."] = "Hiện không có HLV người chơi nào đang dẫn đội.";
+        m["Squad Rules"] = "Quy định đội hình";
+        m["Squad Registration Anytime"] = "Đăng ký đội hình bất cứ lúc nào";
+        m["Squad Numbers Anytime"] = "Đổi số áo bất cứ lúc nào";
+        m["On"] = "Bật";
+        m["Off"] = "Tắt";
+        m["The club's manager changed since the squad rules were read."] = "CLB đã đổi HLV kể từ lúc đọc quy định đội hình.";
         m["Freezer (locked values)"] = "Đóng băng giá trị (các mục đang khóa)";
         m["Load Game"] = "Tải dữ liệu Game";
         m["View on GitHub — {0}"] = "Xem trên GitHub — {0}";
@@ -304,9 +312,11 @@ public static partial class Loc
             "Phiên bản game ({0}) được hỗ trợ, nhưng chưa có file save nào được tải. Hãy mở save trong game, lưu lại không cần thoát, rồi nhấn Tải dữ liệu Game.";
         m["Development speed: removed {0} stale player row(s)."] = "Tốc độ phát triển: đã gỡ {0} cầu thủ cũ không còn hiệu lực.";
         m["Development speed cleanup failed: {0}"] = "Dọn dẹp tốc độ phát triển thất bại: {0}";
+        m["Force Board Request switched off"] = "Đã tắt Buộc duyệt yêu cầu ban lãnh đạo";
+        m["A save was loaded, so Force Board Request was switched off. You can turn it on again in Gameplay Tools."] = "Đã nạp bản lưu nên tính năng Buộc duyệt yêu cầu ban lãnh đạo đã tắt. Bạn có thể bật lại trong Công cụ trong game.";
         m["Wonderkid Academy switched off"] = "Học viện Thần đồng đã tắt";
-        m["A save was loaded, so Wonderkid Academy was switched off. Your settings are kept: switch it on again in the Hook Manager if you want it for this save."] =
-            "Một save vừa được tải, nên Học viện Thần đồng đã tự tắt. Cài đặt của bạn vẫn được giữ: hãy bật lại trong Quản lý Hook nếu muốn dùng cho save này.";
+        m["A save was loaded, so Wonderkid Academy was switched off. Your settings are kept. You can turn it on again in Gameplay Tools."] =
+            "Một save vừa được tải, nên Học viện Thần đồng đã tự tắt. Cài đặt của bạn vẫn được giữ: hãy bật lại trong Công cụ trong game nếu muốn dùng cho save này.";
         m["Wonderkid Academy could not be switched off: {0}"] = "Không thể tắt Học viện Thần đồng: {0}";
 
         // Connection & errors

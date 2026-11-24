@@ -6,7 +6,7 @@ using Avalonia.Media;
 namespace Fm27Editor.App;
 
 /// <summary>
-/// "How to use" for the Wonderkid Academy, written for players. It follows what the Hook Manager does: one level active at
+/// "How to use" for the Wonderkid Academy in Gameplay Tools, written for players. One level is active at
 /// a time, adding a wider entry drops the narrower ones it covers, Every regen clears the lists, Clear on the last entry
 /// turns it off, settings apply at once, and it lasts until the game exits.
 /// </summary>

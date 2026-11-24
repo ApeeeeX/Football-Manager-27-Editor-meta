@@ -168,6 +168,7 @@ public sealed class ClubTests
 
         Assert.Equal(("Year Founded", ClubSection.Information, "Overview"),
             (ClubFieldInfo.For(ClubField.YearFounded).Label, ClubFieldInfo.For(ClubField.YearFounded).Section, ClubFieldInfo.For(ClubField.YearFounded).Group));
+        Assert.Equal(ClubSection.Kits, ClubFieldInfo.For(ClubField.AllowLicensedKits).Section);
         Assert.Equal(("% of Transfer Revenue Made Available", ClubSection.Finances, "Overview"),
             (ClubFieldInfo.For(ClubField.TransferRevenuePercent).Label, ClubFieldInfo.For(ClubField.TransferRevenuePercent).Section, ClubFieldInfo.For(ClubField.TransferRevenuePercent).Group));
         Assert.Equal(("Average Match Ticket Price", ClubSection.Finances, "Overview"),
@@ -527,6 +528,9 @@ public sealed class ClubTests
 
         var infoGroups = ClubSectionLayout.BuildGroups(ClubSection.Information, profile, access, ClubAddr, FirstTeamAddr, values);
         var financeGroups = ClubSectionLayout.BuildGroups(ClubSection.Finances, profile, access, ClubAddr, FirstTeamAddr, values);
+        var reputation = Assert.Single(infoGroups.Single(g => g.Title == "Overview").Fields, f => f.Field == ClubField.TeamReputation);
+        Assert.Equal(new ClubFieldTarget(FirstTeamAddr, ClubField.TeamReputation), reputation.Target);
+        Assert.Equal(6200, values[ClubField.TeamReputation]);
 
         // Balance is first in Finances / Overview; SocialMediaFollowers accepts -1.
         Assert.Equal(ClubField.Balance, financeGroups.First(g => g.Title == "Overview").Fields[0].Field);

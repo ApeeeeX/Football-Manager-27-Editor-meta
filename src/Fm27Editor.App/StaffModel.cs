@@ -63,6 +63,8 @@ public static class StaffLabels
 public sealed class StaffDraft
 {
     public Dictionary<string, string> Changes { get; } = [];
+    internal ManagerUnlockableState? UnlockableBaseline { get; set; }
+    internal bool HasUnlockableChanges => Changes.Keys.Any(key => key.StartsWith("unlock:", StringComparison.Ordinal));
 
     public static (int Min, int Max) Range(string key) => key switch
     {

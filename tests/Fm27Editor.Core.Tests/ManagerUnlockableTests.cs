@@ -101,5 +101,13 @@ public class ManagerUnlockableTests
         Assert.Equal(0x100u, BitConverter.ToUInt32(manager, 0x3FC));
         writer.SetManagerUnlockables(repo.Reload(address)!, null, null, squadNumbersAnytime: true);
         Assert.Equal(0x300u, BitConverter.ToUInt32(manager, 0x3FC));
+
+        BitConverter.GetBytes(0x103u).CopyTo(manager, 0x3FC);
+        var pending = repo.Reload(address)!;
+        writer.SetManagerUnlockables(pending, null, null, squadRegistrationAnytime: false, squadNumbersAnytime: true);
+        Assert.Equal(0x203u, BitConverter.ToUInt32(manager, 0x3FC));
+        Assert.Throws<StaleObjectException>(() =>
+            writer.SetManagerUnlockables(pending, null, null, squadRegistrationAnytime: false, squadNumbersAnytime: true));
+        Assert.Equal(0x203u, BitConverter.ToUInt32(manager, 0x3FC));
     }
 }

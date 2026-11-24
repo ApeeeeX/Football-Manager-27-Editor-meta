@@ -11,7 +11,7 @@ public sealed partial class MainWindow
 {
     event Action? forceBoardRequestChanged;
 
-    Control BuildClubBoardRequestsCard(GameSession session)
+    Control BuildBoardRequestsCard(GameSession session, ulong? clubAddress = null)
     {
         var planner = session.ForceAccept;
         var data = backend.Data;
@@ -54,9 +54,15 @@ public sealed partial class MainWindow
             toggle.IsEnabled = toggle.IsVisible && session.CanWrite && CurrentSave();
         }
 
+        bool CheckClubAccess()
+        {
+            card.IsVisible = clubAddress is null || FindHumanClubManager(session, clubAddress.Value) is not null;
+            return card.IsVisible;
+        }
+
         async Task RefreshAsync()
         {
-            if (busy || !CurrentSave()) return;
+            if (busy || !CurrentSave() || !CheckClubAccess()) return;
             busy = true;
             toggle.IsEnabled = false;
             try
@@ -80,7 +86,7 @@ public sealed partial class MainWindow
 
         toggle.Click += async (_, _) =>
         {
-            if (busy || !CurrentSave() || displayed is not { } expected ||
+            if (busy || !CurrentSave() || !CheckClubAccess() || displayed is not { } expected ||
                 expected is not (ForceAcceptPlanState.Active or ForceAcceptPlanState.Appliable)) return;
             bool enable = expected == ForceAcceptPlanState.Appliable;
             busy = true;

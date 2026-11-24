@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Fm27Editor.App;
 using Fm27Editor.Core.Memory;
 using Fm27Editor.Core.Players;
@@ -8,6 +10,30 @@ namespace Fm27Editor.App.Tests;
 
 public sealed class SquadTests
 {
+    [Theory]
+    [InlineData("Squad Registration Anytime")]
+    [InlineData("Đăng ký đội hình bất cứ lúc nào")]
+    public void Squad_rule_keeps_the_whole_label_and_stages_only_user_changes(string title)
+    {
+        AvaloniaTestThread.Run(() =>
+        {
+            var changes = new List<bool>();
+            var row = MainWindow.BuildSquadRuleRow(title, enabled: true, editable: true, changes.Add);
+            row.Measure(new Size(230, double.PositiveInfinity));
+            row.Arrange(new Rect(0, 0, 230, row.DesiredSize.Height));
+            var label = Assert.IsType<TextBlock>(row.Children[0]);
+            var choice = Assert.IsType<ComboBox>(row.Children[1]);
+            var full = new TextBlock { Text = label.Text, FontSize = label.FontSize, FontFamily = label.FontFamily, TextWrapping = TextWrapping.Wrap };
+            full.Measure(new Size(label.Bounds.Width, double.PositiveInfinity));
+            Assert.True(label.Bounds.Height >= full.DesiredSize.Height - 1);
+            Assert.True(label.Bounds.Right <= choice.Bounds.X);
+            Assert.Equal(1, choice.SelectedIndex);
+            Assert.Empty(changes);
+            choice.SelectedIndex = 0;
+            Assert.Equal([false], changes);
+        });
+    }
+
     [Fact]
     public void SquadPlayerRow_FormatsValuesCorrectly_MatchesSheffieldOracle()
     {

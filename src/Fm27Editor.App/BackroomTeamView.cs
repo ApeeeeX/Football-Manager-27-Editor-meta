@@ -24,13 +24,19 @@ public sealed partial class MainWindow
             .Select(candidate => (candidate.Label, candidate)).ToArray(), showAllInitially: true);
         if (chosenTeam is null || !CurrentSave()) return;
         var available = staff.Where(person => person.TeamAddress == chosenTeam.Team && BackroomTeam.IsEligible(person, firstTeam))
-            .Select(BackroomTeam.DepartmentOf).OfType<BackroomDepartment>().Distinct().Order().ToArray();
+            .DistinctBy(person => person.Id).Select(BackroomTeam.DepartmentOf).OfType<BackroomDepartment>()
+            .GroupBy(department => department).OrderBy(group => group.Key).ToArray();
         if (available.Length == 0) return;
-        var options = new[] { new BackroomOption("All departments", null) }
-            .Concat(available.Select(department => new BackroomOption(department.ToString(), department))).ToArray();
+        var options = new[] { new BackroomOption(Counted("All departments", available.Sum(group => group.Count())), null) }
+            .Concat(available.Select(group => new BackroomOption(Counted(group.Key switch
+            {
+                BackroomDepartment.Coaching => "Coaching Staff",
+                BackroomDepartment.Recruitment => "Recruitment Staff",
+                _ => "Medical Staff",
+            }, group.Count()), group.Key))).ToArray();
         var option = await PickerDialog.Show(this, "Build a Backroom Team", query => options
-            .Where(candidate => PickerSearch.Hit(query, Loc.S(candidate.Label)))
-            .Select(candidate => (Loc.S(candidate.Label), candidate)).ToArray(), showAllInitially: true);
+            .Where(candidate => PickerSearch.Hit(query, candidate.Label))
+            .Select(candidate => (candidate.Label, candidate)).ToArray(), showAllInitially: true);
         if (option is null || !CurrentSave()) return;
 
         const string title = "Build a Backroom Team";
@@ -70,6 +76,7 @@ public sealed partial class MainWindow
         catch (Exception ex) { status.Text = UserMessage.For(ex); }
 
         bool CurrentSave() => ReferenceEquals(backend.Data, data) && !backend.SaveChanged;
+        static string Counted(string label, int count) => $"{Loc.S(label)} ({count})";
     }
 
     static string StaffAttributeLabel(StaffAttribute attribute) => PlayerChangeLabels.Words(attribute.ToString());

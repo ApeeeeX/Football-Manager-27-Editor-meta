@@ -1,5 +1,7 @@
+using System.Text;
 using Avalonia.Controls;
-using Avalonia.VisualTree;
+using Avalonia.LogicalTree;
+using Avalonia.Threading;
 using Fm27Editor.App;
 using Fm27Editor.Core.Players;
 using Fm27Editor.Core.Staff;
@@ -11,6 +13,72 @@ public sealed class Phase1FeatureTests : IDisposable
     readonly int? savedFloor = RegenIds.Current;
     public Phase1FeatureTests() => RegenIds.Current = 1_000_000;
     public void Dispose() => RegenIds.Current = savedFloor;
+
+    [Fact]
+    public void Rca_preview_uses_the_valid_attribute_being_typed_before_focus_leaves_the_box()
+    {
+        AvaloniaTestThread.Run(() =>
+        {
+            var player = MakePlayer(1, 100, "Forward", new DateOnly(2000, 1, 1), 120, 160, uniformAttr20: 10);
+            player.RawAttributes[(int)PlayerAttribute.LeftFoot] = 50;
+            var draft = new PlayerDraft(player);
+            var finishing = PlayerFields.All.Single(field => field.Id == nameof(PlayerAttribute.Finishing));
+            var input = MainWindow.RatingBox(10, 1, 20, value => draft.Stage(finishing, value), updateAsTyped: true);
+            Assert.Equal(79, draft.RecommendedAbility());
+            input.Text = "20";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(99, draft.RecommendedAbility());
+            Assert.Equal(50, player.Raw(PlayerAttribute.Finishing));
+            input.Text = "201";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(99, draft.RecommendedAbility());
+            input.Text = "10";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(79, draft.RecommendedAbility());
+            Assert.Equal(0, draft.Count);
+        });
+    }
+
+    [Fact]
+    public void Role_details_follow_selection_and_show_the_players_key_attribute_values()
+    {
+        AvaloniaTestThread.Run(() =>
+        {
+            using var json = new MemoryStream(Encoding.UTF8.GetBytes("""
+                {
+                  "SettingsVersion":"test", "KeyAttributesWeight":16, "PreferableAttributesWeight":4,
+                  "AvoidAttributesWeight":3, "PositionRatingPenalties":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                  "GeneralPositionToRoleAndDutiesDefinitionsMap":{"Striker":[
+                    {"Role":"Finisher","DutiesAttributes":{"InPossession":[{"Name":"Finishing","KeyAttribute":true}]}},
+                    {"Role":"Creator","DutiesAttributes":{"InPossession":[{"Name":"Passing","KeyAttribute":true},{"Name":"Vision","KeyAttribute":false}]}}
+                  ]}
+                }
+                """));
+            var attributes = new byte[64];
+            attributes[(int)PlayerAttribute.Finishing] = 90;
+            attributes[(int)PlayerAttribute.Passing] = 50;
+            attributes[(int)PlayerAttribute.Vision] = 60;
+            var view = MainWindow.BuildPhaseRoleTables(PhaseRoleRatings.Load(json), PlayerPosition.Striker, attributes, 5, 20);
+            var window = new Window { Content = view, Width = 540, Height = 440 };
+            window.Show();
+            try
+            {
+                Dispatcher.UIThread.RunJobs();
+                var table = view.GetLogicalDescendants().OfType<DataGrid>().Single();
+                Assert.Equal(2, table.Columns.Count);
+                string?[] Labels() => view.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text).ToArray();
+                Assert.Contains(ScoutingLabels.Attribute(PlayerAttribute.Finishing), Labels());
+                Assert.Contains("18", Labels());
+                table.SelectedItem = table.ItemsSource!.Cast<object>().Last();
+                Dispatcher.UIThread.RunJobs();
+                Assert.Contains(ScoutingLabels.Attribute(PlayerAttribute.Passing), Labels());
+                Assert.Contains("10", Labels());
+                Assert.DoesNotContain(ScoutingLabels.Attribute(PlayerAttribute.Finishing), Labels());
+                Assert.False(view.GetLogicalDescendants().OfType<Expander>().Single().IsExpanded);
+            }
+            finally { window.Close(); }
+        });
+    }
     static PlayerRecord MakePlayer(
         ulong addr,
         int id,
@@ -51,37 +119,6 @@ public sealed class Phase1FeatureTests : IDisposable
             Positions = positions,
             Personality = pers,
         };
-    }
-
-    static T FindSingle<T>(Control root) where T : Control
-    {
-        if (root is T hit) return hit;
-        if (root is Panel panel)
-            foreach (var child in panel.Children)
-                if (child is Control c && TryFind(c, out T? found))
-                    return found!;
-        if (root is Decorator dec && dec.Child is Control dc && TryFind(dc, out T? decFound))
-            return decFound!;
-        if (root is ContentControl cc && cc.Content is Control ccChild && TryFind(ccChild, out T? ccFound))
-            return ccFound!;
-        throw new Xunit.Sdk.XunitException($"Control {typeof(T).Name} not found.");
-    }
-
-    static bool TryFind<T>(Control root, out T? found) where T : Control
-    {
-        if (root is T hit) { found = hit; return true; }
-        if (root is Panel panel)
-        {
-            foreach (var child in panel.Children)
-                if (child is Control c && TryFind(c, out found))
-                    return true;
-        }
-        if (root is Decorator dec && dec.Child is Control dc && TryFind(dc, out found))
-            return true;
-        if (root is ContentControl cc && cc.Content is Control ccChild && TryFind(ccChild, out found))
-            return true;
-        found = null;
-        return false;
     }
 
     [Fact]
@@ -180,61 +217,28 @@ public sealed class Phase1FeatureTests : IDisposable
     }
 
     [Fact]
-    public void MiniScoutingCardAndTalentedRegensTabRenderOnAvaloniaUiThread()
+    public void MiniScoutingCardRendersOnAvaloniaUiThread()
     {
         AvaloniaTestThread.Run(() =>
         {
-            PlayerRecord? opened = null;
-            var tab = new TalentedRegensTab(p => opened = p);
-            var regen1 = MakePlayer(1, 2_000_001, "Wonder Regen", new DateOnly(2007, 4, 1), 130, 185, PlayerPosition.Striker, 14);
-            var regen2 = MakePlayer(2, 2_000_002, "Low PA Regen", new DateOnly(2007, 4, 1), 100, 120, PlayerPosition.Striker, 10);
-            var realVeteran = MakePlayer(3, 1_234, "Veteran Real", new DateOnly(1996, 4, 1), 160, 165, PlayerPosition.Striker, 16);
-
-            var card = MainWindow.MiniScoutingCard(regen1);
-            Assert.NotNull(card);
-
-            tab.SetPlayers([regen1, regen2, realVeteran], regenIdFloorOverride: 2_000_000);
-            var grid = FindSingle<DataGrid>(tab.Root);
-            var items = grid.ItemsSource!.Cast<TalentedRegensTab.RegenRow>().ToList();
-            Assert.Single(items);
-            Assert.Equal("Wonder Regen", items[0].Name);
-            Assert.Null(opened);
+            var player = MakePlayer(1, 2_000_001, "Wonder Regen", new DateOnly(2007, 4, 1), 130, 185, PlayerPosition.Striker, 14);
+            Assert.NotNull(MainWindow.MiniScoutingCard(player));
         });
     }
 
     [Fact]
-    public void StaffRcaReportsUnavailableWhenDataAnalystAtOrAbove15OrRolesMissing()
+    public void StaffRcaIsUnknownWithoutTheStoredAttributeBlock()
     {
-        var attrs = new byte[Enum.GetValues<StaffAttribute>().Length];
-        Array.Fill(attrs, (byte)15); // 15/20 across the board -> expected uniform coach RCA = 150
-        var analystRoles = new byte[15];
-        analystRoles[(int)StaffRole.DataAnalyst] = 18;
-        var analyst = new StaffRecord
+        var staff = new StaffRecord
         {
             Address = 0x100,
             StaffAddress = 0x200,
-            Attributes = attrs,
+            Attributes = new byte[Enum.GetValues<StaffAttribute>().Length],
             Personality = new byte[8],
-            Roles = analystRoles,
             Kind = new StaffKind(0, 0, 0, null, false),
         };
-        var analystRca = StaffRcaCalculator.Calculate(analyst);
-        Assert.Null(analystRca.Score);
-        Assert.True(analystRca.HasUnavailableDataAnalystInput);
-
-        var coachRoles = new byte[15];
-        coachRoles[(int)StaffRole.Coach] = 20;
-        var coach = new StaffRecord
-        {
-            Address = 0x101,
-            StaffAddress = 0x201,
-            Attributes = attrs,
-            Personality = new byte[8],
-            Roles = coachRoles,
-            Kind = new StaffKind(0, 0, 0, null, false),
-        };
-        var coachRca = StaffRcaCalculator.Calculate(coach);
-        Assert.NotNull(coachRca.Score);
-        Assert.False(coachRca.HasUnavailableDataAnalystInput);
+        var result = StaffRcaCalculator.Calculate(staff);
+        Assert.Null(result.Score);
+        Assert.NotNull(result.UnavailableReason);
     }
 }

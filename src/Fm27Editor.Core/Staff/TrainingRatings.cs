@@ -37,9 +37,12 @@ public static class TrainingRatings
     /// <summary>Stars (0-5, half steps) from 1-20 attribute values.</summary>
     public static double Stars(TrainingCategory category, Func<StaffAttribute, int> value)
     {
-        int sum = Weights(category).Concat(Common).Sum(w => value(w.Attribute) * w.Weight);
-        return Math.Round(sum / 60.0 * 2, MidpointRounding.AwayFromZero) * 0.5;
+        return Math.Round(Score(category, value) / 60.0 * 2, MidpointRounding.AwayFromZero) * 0.5;
     }
+
+    /// <summary>The weighted sum behind the stars, before rounding to half stars.</summary>
+    internal static int Score(TrainingCategory category, Func<StaffAttribute, int> value) =>
+        Weights(category).Concat(Common).Sum(w => value(w.Attribute) * w.Weight);
 
     public static double Stars(StaffRecord staff, TrainingCategory category) => Stars(category, staff.Attribute);
 

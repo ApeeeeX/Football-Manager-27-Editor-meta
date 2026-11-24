@@ -43,8 +43,7 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
     : EntityScreen<StaffRecord, StaffRow, StaffDraft>(host, "staff", "Staff", "staff", "Search staff name or ID...")
 {
     const string AllClubs = "All clubs", AllJobs = "All jobs";
-    const string InterestedUnlockable = "unlock:All Players Interested", UnsackableUnlockable = "unlock:Become Unsackable",
-        RegistrationUnlockable = "unlock:Allow Squad Registration Anytime", NumbersUnlockable = "unlock:Allow Squad Numbers Anytime";
+    const string InterestedUnlockable = "unlock:All Players Interested", UnsackableUnlockable = "unlock:Become Unsackable";
 
     /// <summary>Freeze / Unfreeze for every staff member selected in the list, as one history entry.</summary>
     protected override IEnumerable<(string Label, Action<IReadOnlyList<StaffRecord>> Run)> ContextActions()
@@ -177,8 +176,7 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
     {
         string? oldClub = clubFilter.SelectedItem as string, oldJob = jobFilter.SelectedItem as string;
         var g = SelectedGender();
-        var visible = Rows.Where(r => (g is null || r.Staff.Gender == g)
-            && (g != Fm27Editor.Core.Offsets.Gender.Men || r.Staff.Club?.Gender != Fm27Editor.Core.Offsets.Gender.Women));
+        var visible = Rows.Where(r => StaffFilter.MatchesGender(r.Staff, g, excludeWomenClubs: g == Fm27Editor.Core.Offsets.Gender.Men));
         var clubs = new[] { AllClubs }.Concat(visible.Select(r => r.Club).Where(s => !string.IsNullOrWhiteSpace(s))
             .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase)).ToArray();
         var jobs = new[] { AllJobs }.Concat(visible.Select(r => r.Job).Where(s => !string.IsNullOrWhiteSpace(s))
@@ -243,16 +241,15 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
         var w = Host.Backend.Session.StaffWriter;
         bool? interested = v.TryGetValue(InterestedUnlockable, out int interestFlag) ? interestFlag == 1 : null;
         bool? unsackable = v.TryGetValue(UnsackableUnlockable, out int unsackableFlag) ? unsackableFlag == 1 : null;
-        bool? registration = v.TryGetValue(RegistrationUnlockable, out int registrationFlag) ? registrationFlag == 1 : null;
-        bool? numbers = v.TryGetValue(NumbersUnlockable, out int numbersFlag) ? numbersFlag == 1 : null;
+        var unlockableBaseline = draft.UnlockableBaseline;
         write = () =>
         {
+            if (interested.HasValue || unsackable.HasValue)
+                w.SetManagerUnlockables(s with { ManagerUnlockables = unlockableBaseline }, interested, unsackable);
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("attr:", StringComparison.Ordinal)))
                 { var attribute = Enum.Parse<StaffAttribute>(key[5..]); w.SetAttribute(s, attribute, value); if (Host.Backend.Session.Staff.Reload(s.Address) is { } written) Host.Backend.AcceptFrozenStaffEdit(written, attribute); }
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("mgr:", StringComparison.Ordinal)))
                 w.SetManagerAttribute(s, Enum.Parse<ManagerAttribute>(key[4..]), value);
-            if (interested.HasValue || unsackable.HasValue || registration.HasValue || numbers.HasValue)
-                w.SetManagerUnlockables(s, interested, unsackable, registration, numbers);
             foreach (var (key, value) in v.Where(kv => kv.Key.StartsWith("pers:", StringComparison.Ordinal)))
                 w.SetPersonality(s, Enum.Parse<StaffPersonality>(key[5..]), value);
             if (v.TryGetValue("caps", out int caps)) w.SetCaps(s, caps);
@@ -283,6 +280,7 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
 
     protected override void BuildEditor(StaffRecord s, StaffDraft draft, Action changed)
     {
+        Action? refreshRca = null;
         TextBox Box(string key, string original, double width = 48)
         {
             bool isRating20 = key.StartsWith("attr:", StringComparison.Ordinal) || key.StartsWith("pers:", StringComparison.Ordinal) || key.StartsWith("role:", StringComparison.Ordinal);
@@ -314,6 +312,7 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
                 if (box.Text == original) draft.Changes.Remove(key); else draft.Changes[key] = box.Text ?? "";
                 ApplyRatingChrome();
                 changed();
+                if (isRating20) refreshRca?.Invoke();
             };
             return box;
         }
@@ -386,16 +385,27 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
 
         var caDisplay = new TextBlock { Text = s.CurrentAbility.ToString(Inv), FontSize = 16, FontWeight = FontWeight.Bold, Foreground = UiKit.Brush("#38BDF8"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
         var paDisplay = new TextBlock { Text = s.PotentialAbility.ToString(Inv), FontSize = 16, FontWeight = FontWeight.Bold, Foreground = UiKit.Brush("#C084FC"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
-        var staffRca = StaffRcaCalculator.Calculate(s);
-        string rcaHeaderText = staffRca.Score is { } rcaVal ? rcaVal.ToString(Inv) : Loc.S("Unavailable");
-        string rcaColor = staffRca.HasUnavailableDataAnalystInput ? "#FBBF24" : staffRca.Score is not null ? "#4ADE80" : "#94A3B8";
-        var rcaDisplay = new TextBlock { Text = rcaHeaderText, FontSize = 16, FontWeight = FontWeight.Bold, Foreground = UiKit.Brush(rcaColor), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
-        if (staffRca.UnavailableReason is { } rcaReason)
-            ToolTip.SetTip(rcaDisplay, Loc.S(rcaReason));
+        var rcaDisplay = new TextBlock { FontSize = 16, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
+        refreshRca = () =>
+        {
+            var attributes = new Dictionary<StaffAttribute, int>();
+            var roles = new Dictionary<StaffRole, int>();
+            foreach (var (key, text) in draft.Changes)
+            {
+                if (!int.TryParse(text, System.Globalization.NumberStyles.Integer, Inv, out int value) || value is < 1 or > 20) continue;
+                if (key.StartsWith("attr:", StringComparison.Ordinal) && Enum.TryParse<StaffAttribute>(key[5..], out var attribute)) attributes[attribute] = value;
+                else if (key.StartsWith("role:", StringComparison.Ordinal) && Enum.TryParse<StaffRole>(key[5..], out var role)) roles[role] = value;
+            }
+            var result = StaffRcaCalculator.Calculate(s, attributes, roles);
+            rcaDisplay.Text = result.Score is { } score ? score.ToString(Inv) : Loc.S("Unavailable");
+            rcaDisplay.Foreground = UiKit.Brush(result.Score is null ? "#94A3B8" : "#4ADE80");
+            ToolTip.SetTip(rcaDisplay, result.UnavailableReason is { } reason ? Loc.S(reason) : null);
+        };
+        refreshRca();
         var headerCommands = new StackPanel
         {
             Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
-            Children = { UiKit.StatBox("CA", caDisplay), UiKit.StatBox("PA", paDisplay) },
+            Children = { UiKit.StatBox("RCA", rcaDisplay), UiKit.StatBox("CA", caDisplay), UiKit.StatBox("PA", paDisplay) },
         };
         // Freezer: the same Freeze / Unfreeze pair the player tools have; every attribute is frozen at its current value.
         if (Host.Backend.Freezer is { } freezer)
@@ -440,6 +450,9 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
         if (s.Caps is { } capsValue) info.Add((Loc.S("Caps"), Box("caps", capsValue.ToString(Inv), 58)));
         if (s.Goals is { } goalsValue) info.Add((Loc.S("Goals"), Box("goals", goalsValue.ToString(Inv), 58)));
         if (s.License is { } licenseValue) info.Add((Loc.S("License"), LicenseBox(licenseValue)));
+        info.Add((Loc.S("Home Reputation"), Box("rep:Home", s.HomeReputation.ToString(Inv), 68)));
+        info.Add((Loc.S("Current Reputation"), Box("rep:Current", s.CurrentReputation.ToString(Inv), 68)));
+        info.Add((Loc.S("World Reputation"), Box("rep:World", s.WorldReputation.ToString(Inv), 68)));
         col[0].Children.Add(UiKit.Card("Information", Rows(info)));
 
         // FMRTE's licence dropdown; the draft keeps the chosen code like any other field.
@@ -459,31 +472,16 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
             };
             return box;
         }
-        string rcaCardText = staffRca.Score is { } sr
-            ? (staffRca.PrimaryRole is { } pr ? $"{sr} ({StaffDetailsMassEdit.RoleLabel(pr)})" : sr.ToString(Inv))
-            : (staffRca.HasUnavailableDataAnalystInput ? Loc.S("Unavailable (Data Analyst in FM27)") : Loc.S("Unavailable"));
-        var rcaLabel = new TextBlock
-        {
-            Text = rcaCardText,
-            FontSize = 12,
-            Foreground = UiKit.Brush(staffRca.Score is not null ? "#4ADE80" : staffRca.HasUnavailableDataAnalystInput ? "#FBBF24" : "#94A3B8"),
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Right,
-        };
-        if (staffRca.UnavailableReason is { } reasonTip) ToolTip.SetTip(rcaLabel, Loc.S(reasonTip));
         col[0].Children.Add(UiKit.Card("Ability", Rows([
             ("CA", Box("CA", s.CurrentAbility.ToString(Inv), 58)),
             ("PA", Box("PA", s.PotentialAbility.ToString(Inv), 58)),
         ])));
-        col[0].Children.Add(UiKit.Card("Reputation", Rows([
-            (Loc.S("Home"), Box("rep:Home", s.HomeReputation.ToString(Inv), 68)),
-            (Loc.S("Current"), Box("rep:Current", s.CurrentReputation.ToString(Inv), 68)),
-            (Loc.S("World"), Box("rep:World", s.WorldReputation.ToString(Inv), 68)),
-        ])));
         if (s.ManagerAttributes is { } mgr)
             col[0].Children.Add(UiKit.Card("Manager", Rows(StaffLabels.Manager
                 .Select(m => (m.Label, (Control)Box($"mgr:{m.Attribute}", mgr[(int)m.Attribute].ToString(Inv), 42))))));
-        if (s.ManagerUnlockables is { } flags)
+        if (s.Kind.Manager && Host.Backend.Session.Profile.Staff?.ManagerUnlockables is not null && !draft.HasUnlockableChanges)
+            draft.UnlockableBaseline = Reload(s)?.ManagerUnlockables;
+        if (draft.UnlockableBaseline is { } flags)
         {
             Control Flag(string key, bool original, string tooltip)
             {
@@ -505,10 +503,6 @@ internal sealed partial class StaffScreen(IScreenHost host, IStaffPanels panels)
                 ("All Players Interested", Flag(InterestedUnlockable, flags.AllPlayersInterested, "Makes players interested in joining this manager's club.")),
                 ("Become Unsackable", Flag(UnsackableUnlockable, flags.BecomeUnsackable, "Prevents this manager from being sacked.")),
             };
-            if (flags.SquadRegistrationAnytime is { } registrationOn)
-                unlockableRows.Add(("Allow Squad Registration Anytime", Flag(RegistrationUnlockable, registrationOn, "Lets this manager change squad registration at any time.")));
-            if (flags.SquadNumbersAnytime is { } numbersOn)
-                unlockableRows.Add(("Allow Squad Numbers Anytime", Flag(NumbersUnlockable, numbersOn, "Lets this manager change squad numbers at any time.")));
             col[0].Children.Add(UiKit.Card("Manager Unlockables (Experimental)", Rows(unlockableRows)));
         }
         col[0].Children.Add(UiKit.Card("Personality", Rows(Enum.GetValues<StaffPersonality>()

@@ -54,6 +54,8 @@ public sealed record StaffRecord
     /// <summary>Address of the 15 role ratings and their values, in <see cref="StaffRole"/> order; null when unknown.</summary>
     public ulong RolesAddress { get; init; }
     public byte[]? Roles { get; init; }
+    /// <summary>The stored bytes the game's RCA reads; null when this build or staff kind cannot supply them.</summary>
+    public StaffRcaInput? RcaInput { get; init; }
 }
 
 public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
@@ -205,10 +207,11 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
         if (details is not null && !memory.TryRead(person, extra)) details = null;
         ulong rolesAddress = details is null ? 0 : BitConverter.ToUInt64(extra, details.Roles);
         byte[]? roles = null;
+        bool rolesKnown = details is not null;
         if (rolesAddress != 0)
         {
             var r = new byte[Enum.GetValues<StaffRole>().Length];
-            if (memory.TryRead(rolesAddress, r) && r.All(b => b is >= 1 and <= 20)) roles = r; else rolesAddress = 0;
+            if (memory.TryRead(rolesAddress, r) && r.All(b => b is >= 1 and <= 20)) roles = r; else { rolesAddress = 0; rolesKnown = false; }
         }
         return new StaffRecord
         {
@@ -243,8 +246,20 @@ public sealed class StaffRepository(IProcessMemory memory, OffsetProfile profile
             License = details is null ? null : (StaffLicense)(sbyte)extra[details.License],
             RolesAddress = rolesAddress,
             Roles = roles,
+            RcaInput = rolesKnown ? RcaInputFrom(st, roles) : null,
         };
     }
+
+    StaffRcaInput? RcaInputFrom(byte[] staffBytes, byte[]? roles)
+    {
+        const int BlockLength = 52;
+        if (!S.Attributes.TryGetValue(StaffAttribute.TacticalAttacking, out var first) || first.Offset + BlockLength > staffBytes.Length) return null;
+        rcaFields ??= S.Attributes.Where(kv => kv.Value.Offset >= first.Offset && kv.Value.Offset < first.Offset + BlockLength)
+            .ToDictionary(kv => kv.Key, kv => (kv.Value.Offset - first.Offset, kv.Value.Scaled ? profile.AttributeScale : 1));
+        return new(staffBytes[first.Offset..(first.Offset + BlockLength)], roles, rcaFields);
+    }
+
+    Dictionary<StaffAttribute, (int Index, int Scale)>? rcaFields;
 
     string? ReadTeamName(ulong team, ClubInfo? club)
     {

@@ -113,7 +113,7 @@ public class StaffTests
     }
 
     [Fact]
-    public void Backroom_builds_one_team_skips_the_first_team_head_coach_and_raises_ca_and_pa()
+    public void Backroom_builds_one_team_skips_the_first_team_head_coach_and_raises_ca_and_pa_to_the_new_rca()
     {
         const ulong First = 0x9100, U21 = 0x9200;
         var repo = Repo();
@@ -121,9 +121,16 @@ public class StaffTests
         var writer = new StaffWriter(_w.Memory, _w.Profile, TestWorld.ModuleBase);
         var club = new ClubInfo(0x9000, "Man Utd", "Man Utd");
         // One fixture person in three jobs: the planner checks each record against memory, so the ID stays the real one.
-        var head = person with { Club = club, JobCode = 16, TeamAddress = First };
-        var reserve = person with { Club = club, JobCode = 16, TeamAddress = U21 };
-        var scout = person with { Club = club, JobCode = 14, TeamAddress = First };
+        var block = Convert.FromHexString("0F090C08130E0E1111050F0111640F1410130C0F06120E1210124B055A5A5A5F0541553C2D6446462D2D4B4B054B2D0F2D5A5037");
+        var fields = new Dictionary<StaffAttribute, (int Index, int Scale)>
+        {
+            [StaffAttribute.TacticalAttacking] = (0, 1), [StaffAttribute.Authority] = (4, 1), [StaffAttribute.JudgingPlayerAbility] = (28, 5),
+            [StaffAttribute.PeopleManagement] = (30, 5), [StaffAttribute.Motivating] = (31, 5), [StaffAttribute.TacticalKnowledge] = (33, 5),
+        };
+        var low = person with { CurrentAbility = 90, PotentialAbility = 95, RcaInput = new(block, null, fields) };
+        var head = low with { Club = club, JobCode = 16, TeamAddress = First };
+        var reserve = low with { Club = club, JobCode = 16, TeamAddress = U21 };
+        var scout = low with { Club = club, JobCode = 14, TeamAddress = First };
 
         Assert.False(BackroomTeam.IsEligible(head, First));
         Assert.True(BackroomTeam.IsEligible(reserve, First));
@@ -135,7 +142,70 @@ public class StaffTests
 
         var plan = BackroomTeam.Plan([reserve], club.Address, null, writer, U21, First);
         Assert.Empty(plan.Skipped);
-        Assert.Equal([(false, 188, 200), (true, 195, 200)], plan.Abilities.Select(change => (change.Potential, change.Before, change.After)));
+        // 102 comes from the separate Python translation of the game's function, run on these bytes after the preset's raises.
+        Assert.Equal([(false, 90, 102), (true, 95, 102)], plan.Abilities.Select(change => (change.Potential, change.Before, change.After)));
+
+        var already = reserve with { CurrentAbility = 188, PotentialAbility = 195 };
+        Assert.Empty(BackroomTeam.Plan([already], club.Address, null, writer, U21, First).Abilities); // never lowered
+    }
+
+    [Fact]
+    public void Backroom_puts_each_job_in_the_department_the_game_lists_it_under()
+    {
+        var person = Assert.Single(Repo().LoadAll());
+        BackroomDepartment? Department(short job) => BackroomTeam.DepartmentOf(person with { JobCode = job });
+        foreach (short job in new short[] { 2, 20, 22, 26, 34, 60, 62, 64 }) Assert.Equal(BackroomDepartment.Coaching, Department(job));
+        foreach (short job in new short[] { 10, 14, 44, 58, 86, 88 }) Assert.Equal(BackroomDepartment.Recruitment, Department(job));
+        foreach (short job in new short[] { 12, 38, 40, 46, 48, 50 }) Assert.Equal(BackroomDepartment.Medical, Department(job));
+    }
+
+    static StaffRecord AreaCoach(int id, int attacking, int defending, int possession, int tactical, int technical, int mental)
+    {
+        var attributes = new byte[Enum.GetValues<StaffAttribute>().Length];
+        attributes[(int)StaffAttribute.CoachingAttacking] = (byte)attacking;
+        attributes[(int)StaffAttribute.CoachingDefending] = (byte)defending;
+        attributes[(int)StaffAttribute.CoachingPossession] = (byte)possession;
+        attributes[(int)StaffAttribute.CoachingTactical] = (byte)tactical;
+        attributes[(int)StaffAttribute.CoachingTechnical] = (byte)technical;
+        attributes[(int)StaffAttribute.Determination] = attributes[(int)StaffAttribute.Authority] = attributes[(int)StaffAttribute.Motivating] = (byte)mental;
+        return new StaffRecord
+        {
+            Address = (ulong)id, StaffAddress = (ulong)id + 1, Id = id, JobCode = 2, TeamAddress = 0x9100,
+            Attributes = attributes, Personality = new byte[8], Kind = new StaffKind(0, 0, 0, null, false),
+        };
+    }
+
+    [Fact]
+    public void Backroom_sends_a_balanced_coach_to_the_area_the_team_lacks()
+    {
+        // Hand calculation (weights 6+3): coach 1 scores DefTac 180 but AttTec and PosTec 90; coach 2 scores 108 everywhere.
+        // AttTec is the weakest, and coach 2 is closer to it. After that DefTec and PosTac tie lowest at 150.
+        var areas = BackroomTeam.AssignCoachAreas([AreaCoach(1, 10, 20, 10, 20, 10, 18), AreaCoach(2, 12, 12, 12, 12, 12, 18)]);
+        Assert.Equal(TrainingCategory.AttackingTechnical, areas[2]);
+        Assert.Equal(TrainingCategory.PossessionTactical, areas[1]);
+    }
+
+    [Fact]
+    public void Backroom_three_balanced_coaches_cover_defending_attacking_and_possession()
+    {
+        var areas = BackroomTeam.AssignCoachAreas([AreaCoach(1, 14, 14, 14, 14, 14, 14), AreaCoach(2, 14, 14, 14, 14, 14, 14), AreaCoach(3, 14, 14, 14, 14, 14, 14)]);
+        Assert.Equal(TrainingCategory.DefendingTactical, areas[1]);
+        Assert.Equal(TrainingCategory.AttackingTechnical, areas[2]);
+        Assert.Equal(TrainingCategory.PossessionTactical, areas[3]);
+    }
+
+    [Fact]
+    public void Backroom_gives_general_coaches_different_areas_and_the_rated_coach_set_pieces()
+    {
+        var person = Assert.Single(Repo().LoadAll());
+        var writer = new StaffWriter(_w.Memory, _w.Profile, TestWorld.ModuleBase);
+        var club = new ClubInfo(0x9000, "Man Utd", "Man Utd");
+        var roles = new byte[15];
+        Array.Fill(roles, (byte)1);
+        roles[(int)StaffRole.SetPieceCoach] = 20;
+        var plan = BackroomTeam.Plan([person with { Club = club, JobCode = 2, Roles = roles }], club.Address, BackroomDepartment.Coaching, writer);
+        Assert.Contains(plan.Changes, change => change.Field == StaffAttribute.SetPieces || change.Field == StaffAttribute.TacticalKnowledge);
+        Assert.DoesNotContain(plan.Changes, change => change.Field == StaffAttribute.CoachingAttacking || change.Field == StaffAttribute.CoachingPossession);
     }
 
     /// <summary>

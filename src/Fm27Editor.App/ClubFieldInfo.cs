@@ -215,6 +215,7 @@ public static class ClubFieldInfo
         // Information / Overview
         new(ClubField.YearFounded, "Year Founded", ClubSection.Information, "Overview", ClubDisplayKind.PlainInt, 0, 2300),
         new(ClubField.Status, "Status", ClubSection.Information, "Overview", ClubDisplayKind.PlainInt, 1, 3, ClubStatuses),
+        new(ClubField.TeamReputation, "Reputation", ClubSection.Information, "Overview", ClubDisplayKind.FormattedInt, 0, 10000),
         new(ClubField.ChairmanStatus, "Chairman Status", ClubSection.Information, "Overview", ClubDisplayKind.FormattedInt, 0, 10000),
         new(ClubField.Morale, "Morale", ClubSection.Information, "Overview", ClubDisplayKind.Rating20, 0, 20),
         new(ClubField.AverageAttendance, "Average Attendance", ClubSection.Information, "Overview", ClubDisplayKind.FormattedInt, 0, 1_000_000),
@@ -228,9 +229,8 @@ public static class ClubFieldInfo
         new(ClubField.OwnershipType, "Ownership Type", ClubSection.Information, "Overview", ClubDisplayKind.PlainInt, 0, 255, OwnershipTypes),
         new(ClubField.ChairpersonTitle, "Chairperson Title", ClubSection.Information, "Overview", ClubDisplayKind.PlainInt, 0, 255, ChairpersonTitles),
 
-        // Information / Teams (Team root)
-        new(ClubField.AllowLicensedKits, "Allow Licensed Kits", ClubSection.Information, "Teams", ClubDisplayKind.Bool, 0, 1),
-        new(ClubField.TeamReputation, "Reputation", ClubSection.Information, "Teams", ClubDisplayKind.FormattedInt, 0, 10000),
+        // Kits and Colours (Team root)
+        new(ClubField.AllowLicensedKits, "Allow Licensed Kits", ClubSection.Kits, "Kits and Colours", ClubDisplayKind.Bool, 0, 1),
 
         // Information / Facilities
         new(ClubField.Training, "Training", ClubSection.Information, "Facilities", ClubDisplayKind.Rating20, 0, 20),

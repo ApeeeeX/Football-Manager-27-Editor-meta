@@ -5,8 +5,8 @@ public sealed record PositionRca(PlayerPosition Position, int Rating, double Con
 public sealed record PlayerRcaResult(int BestRca, PlayerPosition BestPosition, IReadOnlyList<PositionRca> Positions);
 
 /// <summary>
-/// Player Recommended Current Ability (RCA) across 14 positions and 48 raw (1-100) attributes,
-/// matching FMCET Data.RCA. Does not depend on current in-game CA.
+/// Football Manager Recommended Current Ability. Scores each familiar position using the raw
+/// attributes and positional diversity, then returns the highest score. CA and PA are not inputs.
 /// </summary>
 public static class RcaCalculator
 {
@@ -53,63 +53,155 @@ public static class RcaCalculator
         [PlayerPosition.Striker] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 8, 6, 1, 6, 2, 1, 1, 2, 1, 1, 4, 0, 5, 1, 6, 2, 5, 0, 0, 1, 6, 2, 1, 2, 2, 10, 6, 2, 5, 0, 7, 6, 6, 7.5],
     };
 
-    static readonly IReadOnlyDictionary<PlayerPosition, double> WeightSums =
-        Weights.ToDictionary(kv => kv.Key, kv => kv.Value.Sum());
+    // Indexed by PlayerPosition. These are the game's position bits, not enum ordinals.
+    static readonly int[] PositionBits =
+        [1, 8, 16, 4, 128, 512, 1024, 256, 4096, 8192, 2048, 16384, 64, 32];
 
-    public static int Calculate(PlayerRecord player) => Analyze(player).BestRca;
+    static readonly int[] PositionLines = [1, 0x1C, 0xE0, 0x700, 0x3800, 0x1C000];
+    static readonly int[] PositionChannels = [0x11248, 0x8924, 0x6490];
+
+    // Ratings 0 and 1 are ineligible. Ratings 18 through 20 use the full score.
+    static readonly byte[] Familiarity =
+        [0, 0, 1, 1, 8, 24, 40, 56, 64, 72, 80, 84, 88, 92, 94, 96, 98, 99, 100, 100, 100];
+
+    public static int Calculate(PlayerRecord player) => Calculate(player.RawAttributes, player.Positions);
+
+    public static int Calculate(ReadOnlySpan<byte> rawAttributes, ReadOnlySpan<byte> positions) =>
+        Evaluate(rawAttributes, positions, breakdown: null).Score;
 
     public static PlayerRcaResult Analyze(PlayerRecord player)
     {
         ArgumentNullException.ThrowIfNull(player);
-        Span<double> raw48 = stackalloc double[48];
-        for (int i = 0; i < 47; i++)
-            raw48[i] = player.Raw(AttributeOrder[i]);
-        raw48[47] = Math.Min(player.Raw(PlayerAttribute.LeftFoot), player.Raw(PlayerAttribute.RightFoot));
-
-        var nat20 = new List<double>();
-        var accomplished18 = new List<double>();
-        var accomplished15 = new List<double>();
-        var competent12 = new List<double>();
         var breakdown = new List<PositionRca>();
+        var (score, bestPosition) = Evaluate(player.RawAttributes, player.Positions, breakdown);
+        breakdown.Sort(static (a, b) => b.Contribution.CompareTo(a.Contribution));
+        return new(score, bestPosition, breakdown);
+    }
 
-        PlayerPosition bestPos = PlayerPosition.Goalkeeper;
-        double bestScore = double.NegativeInfinity;
+    static (int Score, PlayerPosition Position) Evaluate(
+        ReadOnlySpan<byte> rawAttributes, ReadOnlySpan<byte> positions, List<PositionRca>? breakdown)
+    {
+        int diversity = PositionDiversity(positions);
+        Span<byte> attributes = stackalloc byte[AttributeOrder.Length + 2];
+        Span<double> weights = stackalloc double[attributes.Length];
+        for (int i = 0; i < AttributeOrder.Length; i++)
+            attributes[i] = rawAttributes[(int)AttributeOrder[i]];
+        byte left = attributes[^2] = rawAttributes[(int)PlayerAttribute.LeftFoot];
+        byte right = attributes[^1] = rawAttributes[(int)PlayerAttribute.RightFoot];
 
-        foreach (var (pos, weights) in Weights)
+        int best = 1;
+        var bestPosition = PlayerPosition.Goalkeeper;
+        bool hasPosition = false;
+        foreach (var (position, row) in Weights)
         {
-            double dot = 0;
-            for (int i = 0; i < 48; i++)
-                dot += raw48[i] * weights[i];
-            double unweighted = ((dot / WeightSums[pos]) - 30.0) * 4.0 - 1.0;
-            int rating = player.Position(pos);
-
-            double contrib = 0;
-            if (rating == 20) { contrib = unweighted * 1.0; nat20.Add(contrib); }
-            else if (rating is >= 18 and <= 19) { contrib = unweighted * 0.025; accomplished18.Add(contrib); }
-            else if (rating is >= 15 and <= 17) { contrib = unweighted * 0.00625; accomplished15.Add(contrib); }
-            else if (rating is >= 12 and <= 14) { contrib = unweighted * 0.0015625; competent12.Add(contrib); }
-
-            if (rating >= 12)
-                breakdown.Add(new PositionRca(pos, rating, contrib, unweighted));
-
-            if (rating >= 15 && unweighted > bestScore)
+            int rating = Math.Min(20, (int)positions[(int)position]);
+            if (rating < 2) continue;
+            row.AsSpan(0, AttributeOrder.Length).CopyTo(weights);
+            // The game charges for each foot below 100. With two perfect feet it charges once.
+            weights[^2] = left != 100 || right == 100 ? row[^1] : 0;
+            weights[^1] = right != 100 ? row[^1] : 0;
+            int baseScore = Solve(attributes, weights, diversity);
+            int score = Math.Clamp((int)(baseScore * Familiarity[rating] / 100.0 + 0.5), 1, 200);
+            breakdown?.Add(new(position, rating, score, baseScore));
+            if (!hasPosition || score > best)
             {
-                bestScore = unweighted;
-                bestPos = pos;
+                hasPosition = true;
+                best = score;
+                bestPosition = position;
             }
         }
+        return (best, bestPosition);
+    }
 
-        if (bestScore == double.NegativeInfinity && breakdown.Count > 0)
-            bestPos = breakdown.OrderByDescending(b => b.UnweightedBase).First().Position;
+    static int PositionDiversity(ReadOnlySpan<byte> positions)
+    {
+        int mask = 0, ratingsAboveTen = 0;
+        for (int i = 0; i < PositionBits.Length; i++)
+        {
+            if (positions[i] >= 15) mask |= PositionBits[i];
+            ratingsAboveTen += Math.Max(0, positions[i] - 10);
+        }
 
-        double total = 0;
-        if (nat20.Count > 0) total += nat20.Average();
-        if (accomplished18.Count > 0) total += accomplished18.Sum();
-        if (accomplished15.Count > 0) total += accomplished15.Sum();
-        if (competent12.Count > 0) total += competent12.Sum();
+        bool goalkeeper = (mask & 1) != 0;
+        bool defence = (mask & 0x1C) != 0;
+        bool striker = (mask & 0x1C000) != 0;
+        int midfieldLines = ((mask & 0xE0) != 0 ? 1 : 0) + ((mask & 0x700) != 0 ? 1 : 0) + ((mask & 0x3800) != 0 ? 1 : 0);
+        int lines = CountOccupied(mask, PositionLines);
+        int channels = CountOccupied(mask, PositionChannels);
+        int diversity = 3 * (lines + channels) + ratingsAboveTen;
+        if (midfieldLines > 1) diversity -= 3;
+        if ((mask & 0x19B6C) != 0) diversity -= 3;
 
-        int rca = Math.Clamp((int)Math.Floor(total + 0.5), 1, 200);
-        breakdown.Sort(static (a, b) => b.Rating != a.Rating ? b.Rating.CompareTo(a.Rating) : b.UnweightedBase.CompareTo(a.UnweightedBase));
-        return new PlayerRcaResult(rca, bestPos, breakdown);
+        int tier = (goalkeeper ? 1 : 0) + (defence ? 1 : 0) + (striker ? 1 : 0) + (midfieldLines > 0 ? 1 : 0);
+        if (goalkeeper && tier > 1) tier += 2;
+        if (defence && striker) tier = Math.Max(3, tier);
+        if ((mask & 0x3800) != 0 && (mask & 0xE0) != 0) tier = Math.Max(2, tier);
+        if (tier > 1) diversity += tier * tier * (tier + 1);
+        return Math.Clamp(diversity, 40, 140) - 40;
+    }
+
+    static int CountOccupied(int mask, ReadOnlySpan<int> groups)
+    {
+        int count = 0;
+        foreach (int group in groups)
+            if ((mask & group) != 0) count++;
+        return count;
+    }
+
+    static int Solve(ReadOnlySpan<byte> attributes, ReadOnlySpan<double> weights, int diversity)
+    {
+        double allWeights = 0, presentWeights = 0, numerator = 0;
+        int weightCount = 0, presentCount = 0;
+        Span<int> present = stackalloc int[weights.Length];
+        for (int i = 0; i < weights.Length; i++)
+        {
+            double weight = weights[i];
+            if (weight == 0) continue;
+            allWeights += weight;
+            weightCount++;
+            if (attributes[i] == 0) continue;
+            presentWeights += weight;
+            numerator += weight * attributes[i];
+            present[presentCount++] = i;
+        }
+        if (presentWeights == 0) return 1;
+
+        double threshold = 3.75 * allWeights / weightCount;
+        int score = Math.Max(1, (int)((numerator / presentWeights / 5 - 6) * 20));
+        int previousStep = 0;
+        for (int iteration = 1; iteration <= 100; iteration++)
+        {
+            int deduction = Math.Min(score >> 2, diversity / 3);
+            // The game computes the reference on the 1–20 scale in single precision.
+            double reference = 5.0 * ((score - deduction) / 20f + 6f);
+            double excess = 0, shortfall = 0;
+            foreach (int i in present[..presentCount])
+            {
+                double deviation = (attributes[i] - reference) * weights[i] / 5;
+                excess += Math.Max(deviation - threshold, 0);
+                shortfall += Math.Max(-deviation - threshold, 0);
+            }
+
+            double difference = reference - (numerator + 3.75 * (excess - shortfall)) / presentWeights;
+            double rounded = difference + Math.CopySign(0.5, difference);
+            int step = (int)rounded;
+            if (step == 0 && rounded > 0) step = 1;
+            int cap = 5 - Math.Min(4, iteration / 10);
+            step = Math.Clamp(step, -cap, cap);
+            if (step != 0 && previousStep != 0)
+                step = DampenStep(step, previousStep);
+            if (step == 0) break;
+            previousStep = step;
+            score -= Math.Sign(step);
+        }
+        return score;
+    }
+
+    static int DampenStep(int step, int previous)
+    {
+        if (Math.Abs(step - previous) >= 6 && Math.Abs(step) >= 2) step /= 2;
+        if (Math.Abs(previous) < Math.Abs(step)) step = Math.Sign(step) * Math.Abs(previous);
+        if (previous + step == 0 && Math.Abs(step) > 1) step -= Math.Sign(step);
+        return previous < 0 ? Math.Max(step, previous) : Math.Min(step, previous);
     }
 }

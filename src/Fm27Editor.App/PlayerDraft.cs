@@ -12,6 +12,37 @@ public sealed class PlayerDraft(PlayerRecord original)
     public int Count => changes.Count + (Legend is null ? 0 : 1);
     public int Value(FieldDescriptor<PlayerRecord> field) => changes.TryGetValue(field, out var value) ? value : DefaultValue(field);
 
+    internal (byte[] Attributes, byte[] Positions) PreviewRatings()
+    {
+        if (Count == 0) return (Original.RawAttributes, Original.Positions);
+
+        byte[] attributes = (byte[])Original.RawAttributes.Clone();
+        byte[] positions = (byte[])Original.Positions.Clone();
+        if (Legend is { } legend)
+        {
+            foreach (var (attribute, value) in legend.Attributes)
+                if (value > 0) attributes[(int)attribute] = AttributeScaling.ToRaw(value, Original.AttributeScale);
+            foreach (var (position, value) in legend.Positions)
+                positions[(int)position] = (byte)value;
+        }
+        foreach (var (field, value) in changes)
+        {
+            if (field.Group == "Positions" && Enum.TryParse<PlayerPosition>(field.Id, out var position))
+                positions[(int)position] = (byte)value;
+            else if (field.Kind == FieldKind.Rating20 && field.Group != "Personality" && Enum.TryParse<PlayerAttribute>(field.Id, out var attribute))
+                attributes[(int)attribute] = value == field.Read(Original)
+                    ? Original.Raw(attribute)
+                    : AttributeScaling.ToRaw(value, Original.AttributeScale);
+        }
+        return (attributes, positions);
+    }
+
+    internal int RecommendedAbility()
+    {
+        var (attributes, positions) = PreviewRatings();
+        return RcaCalculator.Calculate(attributes, positions);
+    }
+
     public void SetLegend(PlayerLegend? legend)
     {
         Legend = legend;

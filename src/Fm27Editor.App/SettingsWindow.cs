@@ -106,11 +106,27 @@ public sealed partial class MainWindow
         Grid.SetColumn(langCombo, 1);
         langRow.Children.Add(langLabel); langRow.Children.Add(langCombo);
 
+        var chooseGraphics = Loc.BindContent(new Button { HorizontalAlignment = HorizontalAlignment.Left }, "Choose Graphics Folder…");
+        var graphicsPath = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = UiKit.TextSecondary };
+        void ShowGraphicsPath()
+        {
+            graphicsPath.Text = graphics.Folder;
+            graphicsPath.IsVisible = graphics.Folder is not null;
+        }
+        ShowGraphicsPath();
+        var graphicsRow = new StackPanel { Spacing = 6, Children = { chooseGraphics, graphicsPath } };
         var window = new Window
         {
             Title = Loc.S("Settings"), Width = 470, SizeToContent = SizeToContent.Height, CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = UiKit.WindowBg,
-            Content = new StackPanel { Margin = new Thickness(20), Spacing = 14, Children = { row, currencyRow, langRow } },
+            Content = new StackPanel { Margin = new Thickness(20), Spacing = 14, Children = { row, currencyRow, langRow, graphicsRow } },
+        };
+        chooseGraphics.Click += async (_, _) =>
+        {
+            chooseGraphics.IsEnabled = false;
+            try { if (await graphics.ChooseAsync(window)) ShowGraphicsPath(); }
+            catch (Exception ex) { status.Text = Loc.F("Graphics: {0}", UserMessage.For(ex)); }
+            finally { chooseGraphics.IsEnabled = true; }
         };
         void RefreshLang()
         {

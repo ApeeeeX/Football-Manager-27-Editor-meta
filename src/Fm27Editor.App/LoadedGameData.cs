@@ -25,6 +25,7 @@ internal sealed class LoadedGameData(GameSession session)
     public IReadOnlyList<NationRecord> Nations { get; private set; } = [];
     public IReadOnlyList<CompetitionRecord> Competitions { get; private set; } = [];
     public IReadOnlyList<StaffRecord> Staff { get; private set; } = [];
+    public IReadOnlyList<StaffRecord> HumanManagers { get; private set; } = [];
     public IReadOnlyList<StadiumRecord> Stadiums { get; private set; } = [];
     public IReadOnlyList<AwardRecord> Awards { get; private set; } = [];
     public IReadOnlyList<RefereeRecord> Referees { get; private set; } = [];
@@ -114,7 +115,10 @@ internal sealed class LoadedGameData(GameSession session)
                     Task.Run(() =>
                     {
                         if (session.Profile.Staff is not null)
+                        {
                             data.Staff = report.Read("staff", "Reading staff…", () => session.Staff.LoadAll());
+                            data.HumanManagers = data.Staff.Where(staff => staff.Kind.Manager).ToArray();
+                        }
                         data.Nations = report.Read("nations", "Reading nations…", () => session.Nations.LoadAll());
                         if (session.Profile.Nation is not null)
                             data.AgreementOrganisations = report.Read("agreement organisations", "Reading nations…", () =>
@@ -169,7 +173,10 @@ internal sealed class LoadedGameData(GameSession session)
                 if (session.Profile.Competition is not null)
                     data.Competitions = report.Read("competitions", "Reading competitions…", () => session.Competitions.LoadAll());
                 if (session.Profile.Staff is not null)
+                {
                     data.Staff = report.Read("staff", "Reading staff…", () => session.Staff.LoadAll());
+                    data.HumanManagers = data.Staff.Where(staff => staff.Kind.Manager).ToArray();
+                }
                 if (session.Profile.Stadium is not null)
                     data.Stadiums = report.Read("stadiums", "Reading stadiums…", () => session.Stadiums.LoadAll());
                 if (session.Profile.Award is not null)

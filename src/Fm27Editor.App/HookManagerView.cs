@@ -14,7 +14,7 @@ namespace Fm27Editor.App;
 
 public sealed partial class MainWindow
 {
-    Window? hookManagerWindow;
+    Window? gameplayToolsWindow;
 
     /// <summary>One club, nation or continent the Wonderkid Academy can be limited to. Search also matches the short name.</summary>
     sealed record HookTarget(int Id, string Name, string Search)
@@ -31,14 +31,13 @@ public sealed partial class MainWindow
         int MinPa, int MaxPa, int Wonderkid, Dictionary<GoldenGenerationScope, List<HookTarget>> Drafts);
 
     /// <summary>
-    /// Hook Manager: the code hooks the editor has put into the running game (Wonderkid Academy, Development Speed) and a way
-    /// to take each one out. Hooks live in the game, so they keep working with the editor closed and are gone when the game
-    /// exits. The window opens at once; the hook state and the name lists are read in the background.
+    /// Controls the editor's patches and hooks in the running game. The window opens at once while the hook state
+    /// and the name lists are read in the background.
     /// </summary>
-    void OpenHookManager()
+    void OpenGameplayTools()
     {
-        if (backend.State.Status != ConnectionStatus.Connected) { status.Text = Loc.S("Load game first"); return; }
-        if (hookManagerWindow is { } open)
+        if (busy || backend.SaveChanged || backend.Data is null) { status.Text = Loc.S("Load game first"); return; }
+        if (gameplayToolsWindow is { } open)
         {
             if (open.WindowState == WindowState.Minimized) open.WindowState = WindowState.Normal;
             open.Activate();
@@ -579,10 +578,10 @@ public sealed partial class MainWindow
             "Add a player with Set speed in his Actions panel. Works until you close the game.")));
         stack.Children.Add(accelPanel);
         stack.Children.Add(accelHits);
-        stack.Children.Add(BuildClubBoardRequestsCard(session));
+        stack.Children.Add(BuildBoardRequestsCard(session));
         window = new Window
         {
-            Title = Loc.S("Hook Manager"),
+            Title = Loc.S("Gameplay Tools"),
             Width = 720,
             Height = 560,
             MinWidth = 600,
@@ -595,8 +594,8 @@ public sealed partial class MainWindow
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             },
         };
-        hookManagerWindow = window;
-        window.Closed += (_, _) => hookManagerWindow = null;
+        gameplayToolsWindow = window;
+        window.Closed += (_, _) => gameplayToolsWindow = null;
         window.Show(this);
 
         _ = Task.Run(() =>

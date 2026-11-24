@@ -126,7 +126,13 @@ public sealed partial class MainWindow
     void UpdateScalarDraftState(PlayerRecord player)
     {
         int scalarCount = playerScalarDrafts.TryGetValue(player.Address, out var d) ? d.Count : 0;
-        int stdCount = drafts.TryGetValue(player.Address, out var sd) ? sd.Count : 0;
+        int stdCount = 0;
+        if (drafts.TryGetValue(player.Address, out var draft))
+        {
+            stdCount = draft.Count;
+            if (selected?.Address == player.Address && playerRcaValue is { } rca)
+                rca.Text = draft.RecommendedAbility().ToString(Inv);
+        }
         int total = scalarCount + stdCount + (informationDirty?.Invoke() == true ? 1 : 0);
 
         if (saveButton is not null) saveButton.IsEnabled = total > 0;

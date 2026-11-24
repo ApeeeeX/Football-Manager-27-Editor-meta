@@ -74,14 +74,13 @@ internal sealed class AwardScreen(IScreenHost host)
         };
         HeaderHost.Content = UiKit.EntityBanner(a.DisplayName, badges, actions, Host.Graphics.Image("award", a.Id, 72));
 
-        var identification = CardRows("Identification", [
+        Editor.Children.Add(CardRows("Overview", [
             (Loc.S("Unique ID"), Label(a.Id.ToString(Inv), "#F1F5F9")),
             (Loc.S("Full Name"), Label(a.Name ?? a.DisplayName, "#F1F5F9")),
             (Loc.S("Short Name"), Label(a.ShortName ?? "", "#F1F5F9")),
-        ]);
-        var reputation = CardRows("Reputation", Enum.GetValues<AwardField>()
-            .Select(f => (Loc.S(FieldLabel(f)), (Control)FieldBox(draft, f, FieldValue(a, f), 96, changed))));
-        Editor.Children.Add(TwoColumns(identification, reputation));
+            .. Enum.GetValues<AwardField>()
+                .Select(f => (Loc.S(FieldLabel(f)), (Control)FieldBox(draft, f, FieldValue(a, f), 96, changed))),
+        ]));
     }
 
     protected override string? Validate(AwardRecord a, Dictionary<AwardField, string> draft, out Func<int> write)

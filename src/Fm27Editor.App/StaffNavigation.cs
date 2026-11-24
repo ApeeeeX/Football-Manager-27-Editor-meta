@@ -1,4 +1,6 @@
 using System.Globalization;
+using Fm27Editor.Core.Offsets;
+using Fm27Editor.Core.Staff;
 
 namespace Fm27Editor.App;
 
@@ -11,11 +13,21 @@ public static class StaffNavigation
 
 public static class StaffFilter
 {
+    internal static bool MatchesGender(StaffRecord staff, Gender? gender, bool excludeWomenClubs)
+    {
+        // The ordinary staff person flag can misclassify human managers. Filter them by the club they manage.
+        var category = staff.Kind.Manager ? staff.Club?.Gender : staff.Gender;
+        return (gender is null || category == gender) &&
+            (!excludeWomenClubs || staff.Club?.Gender != Gender.Women);
+    }
+
+    internal static bool IsInUniversalSearch(StaffRecord staff) =>
+        staff.Kind.Manager || (staff.Gender != Gender.Women && staff.Club?.Gender != Gender.Women);
+
     public static IReadOnlyList<StaffRow> Apply(IEnumerable<StaffRow> rows, string foldedName, string? club, string? job,
-        Fm27Editor.Core.Offsets.Gender? gender = null, bool excludeWomenClubs = false) =>
+        Gender? gender = null, bool excludeWomenClubs = false) =>
         rows.Where(row =>
-            (gender is null || row.Staff.Gender == gender) &&
-            (!excludeWomenClubs || row.Staff.Club?.Gender != Fm27Editor.Core.Offsets.Gender.Women) &&
+            MatchesGender(row.Staff, gender, excludeWomenClubs) &&
             (foldedName.Length == 0
                 || row.SearchName.Contains(foldedName, StringComparison.Ordinal)
                 || row.Staff.Id.ToString(CultureInfo.InvariantCulture).Contains(foldedName, StringComparison.Ordinal)) &&

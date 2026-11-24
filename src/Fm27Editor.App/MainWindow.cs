@@ -99,7 +99,6 @@ public sealed partial class MainWindow : Window
     string? activeDivision, activeClub, activeNationality;
     string? activeRoleCode;
     double? activeMinRoleScore;
-    TalentedRegensTab? talentedRegensTab;
     ulong? activeTeamClubAddress;
     string? activeTeamClubName;
     ContractStatusFilter? activeContractStatus;
@@ -188,7 +187,6 @@ public sealed partial class MainWindow : Window
         Opened += (_, _) => _ = NotifyIfUpdateAsync();
         Opened += (_, _) => _ = OfferPluginSetupAsync(refused: false);
         _ = graphics.LoadAsync();
-        Opened += async (_, _) => { if (graphics.Folder is null) await ChooseGraphicsAsync(); };
 
         gameDateBadge.Child = gameDateText;
         InitializeFilterControls();
@@ -250,9 +248,7 @@ public sealed partial class MainWindow : Window
         shell.Children.Add(root);
         shell.Children.Add(BuildSearchOverlay());
         Content = shell;
-        talentedRegensTab = new TalentedRegensTab(ShowDetailTab);
         AddModuleTab("Players", playersHost, null);
-        AddModuleTab("Regens", talentedRegensTab.Root, null);
 
         modules.ItemsSource = Modules.Registered;
         modules.DisplayMemberBinding = new Binding("Title");
@@ -641,7 +637,7 @@ public sealed partial class MainWindow : Window
     {
         var stack = new StackPanel { Spacing = 8 };
 
-        // Row 1: Search + Preset (Advanced Search now lives in the top bar)
+        // Row 1: Search + Preset
         Loc.BindToolTip(genderFilter, "Gender filter");
         var row1 = new Grid
         {
@@ -976,7 +972,6 @@ public sealed partial class MainWindow : Window
             if (data is null && retiringGrid?.IsVisible == true) RefreshRetiringPlayers();
             InvalidateFutureTransfers();
             if (data is null && futureGrid?.IsVisible == true) RefreshFutureTransfers();
-            talentedRegensTab?.SetPlayers(loaded.OfType<PlayerRecord>());
             selected = null;
             drafts.Clear();
             contractDrafts.Clear();
@@ -1289,9 +1284,12 @@ public sealed partial class MainWindow : Window
         Foreground = Brush(highlight ? "#E9D5FF" : "#CBD5E1"),
     };
 
+    TextBlock? playerRcaValue;
+
     void RenderEditor()
     {
         editor.Children.Clear();
+        playerRcaValue = null;
         informationDirty = null;
         saveInformation = null;
         if (selected is not { } player) return;
@@ -1309,6 +1307,20 @@ public sealed partial class MainWindow : Window
             Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center
         };
+
+        playerRcaValue = new TextBlock
+        {
+            Text = draft.RecommendedAbility().ToString(Inv),
+            FontSize = 16,
+            FontWeight = FontWeight.Black,
+            Foreground = Brush("#4ADE80"),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            MinWidth = 34,
+        };
+        var rcaBox = UiKit.StatBox("RCA", playerRcaValue);
+        ToolTip.SetTip(rcaBox, Loc.S("Recommended Current Ability"));
+        commands.Children.Add(rcaBox);
 
         foreach (var field in PlayerFields.All.Where(f => f.Group == "Ability"))
         {
@@ -1332,18 +1344,6 @@ public sealed partial class MainWindow : Window
         }
         if (LegacyScoutingAvailability.Enabled)
         {
-        var rcaValue = new TextBlock
-        {
-            Text = ScoutingMetrics.Rca(player).ToString(Inv),
-            FontSize = 16,
-            FontWeight = FontWeight.Black,
-            Foreground = Brush("#4ADE80"),
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            MinWidth = 34,
-        };
-        commands.Children.Add(UiKit.StatBox("RCA", rcaValue));
-
         var bestRole = ScoutingMetrics.BestRole(player);
         var roleValue = new TextBlock
         {
@@ -1423,6 +1423,7 @@ public sealed partial class MainWindow : Window
             playerTab.Player = player;
             playerTab.Header.Content = identityHeader;
             playerTab.Save = saveButton;
+            playerTab.RcaValue = playerRcaValue;
         }
         else editor.Children.Add(identityHeader);
 
@@ -1449,7 +1450,7 @@ public sealed partial class MainWindow : Window
             new("Promises", "Promises", () => PromisesPanel(player)),
             new("Unavailability", "Unavailability", () => UnavailabilityPanel(player)),
         };
-        sections.Insert(1, new("Role Scores", "Role Scores", () => RoleScoresPanel(player)));
+        sections.Insert(1, new("Role Scores", "Role Scores", () => RoleScoresPanel(draft)));
         // Like FMRTE, Future Transfer appears only for players with an agreed future move.
         if (HasFutureTransfer(player))
             sections.Add(new("Future Transfer", "Future Transfer", () => FutureTransferPanel(player)!));
@@ -1519,26 +1520,36 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The 1-20 rating box of the player attribute page: bold number coloured by band, Enter or leaving the box commits,
-    /// text outside <paramref name="min"/>..<paramref name="max"/> goes back to the last value.
+    /// The rating box can stage valid input as it is typed. Leaving the box restores the last valid value when needed.
     /// </summary>
-    internal static TextBox RatingBox(int value, int min, int max, Action<int> commit, Func<int>? current = null)
+    internal static TextBox RatingBox(int value, int min, int max, Action<int> commit, Func<int>? current = null, bool updateAsTyped = false)
     {
         int last = value;
         var rating = CreateRatingInput();
         rating.Text = value.ToString(Inv);
-        rating.Foreground = RatingColor(value);
-        rating.Background = RatingBg(value);
-        rating.BorderBrush = RatingBorder(value);
+        void Colour(int ratingValue)
+        {
+            rating.Foreground = RatingColor(ratingValue);
+            rating.Background = RatingBg(ratingValue);
+            rating.BorderBrush = RatingBorder(ratingValue);
+        }
+        void Apply(int ratingValue)
+        {
+            Colour(ratingValue);
+            if (ratingValue == last) return;
+            last = ratingValue;
+            commit(ratingValue);
+        }
+        bool TryRead(out int next) => int.TryParse(rating.Text, out next) && next >= min && next <= max;
+        Colour(value);
         if (current is not null) rating.GotFocus += (_, _) => last = current();
+        if (updateAsTyped)
+            rating.TextChanged += (_, _) => { if (TryRead(out int next)) Apply(next); };
         rating.LostFocus += (_, _) =>
         {
-            if (!int.TryParse(rating.Text, out int v) || v < min || v > max) v = last;
+            int v = TryRead(out int next) ? next : last;
             rating.Text = v.ToString(Inv);
-            rating.Foreground = RatingColor(v);
-            rating.Background = RatingBg(v);
-            rating.BorderBrush = RatingBorder(v);
-            if (v != last) { last = v; commit(v); }
+            Apply(v);
         };
         rating.KeyDown += (_, e) =>
         {
@@ -1876,7 +1887,8 @@ public sealed partial class MainWindow : Window
         }
         if (field.Kind == FieldKind.Rating20)
         {
-            var rating = RatingBox(currentVal, field.Min, field.Max, value => { if (value != draft.Value(field)) Staged(value); }, () => draft.Value(field));
+            var rating = RatingBox(currentVal, field.Min, field.Max, value => { if (value != draft.Value(field)) Staged(value); },
+                () => draft.Value(field), updateAsTyped: field.Group != "Personality");
             DockPanel.SetDock(rating, Dock.Right); line.Children.Add(rating); line.Children.Add(label);
             return line;
         }
@@ -2038,7 +2050,7 @@ public sealed partial class MainWindow : Window
     {
         p.GameDate ??= backend.GameDate;
         var arr = rows.ToArray(); int index = Array.FindIndex(arr, x => x is PlayerRecord old && old.Address == p.Address);
-        if (index >= 0) { arr[index] = p; rows = arr; talentedRegensTab?.SetPlayers(arr.OfType<PlayerRecord>()); }
+        if (index >= 0) { arr[index] = p; rows = arr; }
         _ = FilterInternal(reportStatus: false); updating = true; grid.SelectedItem = p; updating = false;
         InvalidateRetiringPlayers();
         if (retiringGrid?.IsVisible == true) RefreshRetiringPlayers();

@@ -8,9 +8,11 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Fm27Editor.Core.Clubs;
 using Fm27Editor.Core.Game;
+using Fm27Editor.Core.Memory;
 using Fm27Editor.Core.Nations;
 using Fm27Editor.Core.Offsets;
 using Fm27Editor.Core.Players;
+using Fm27Editor.Core.Staff;
 
 namespace Fm27Editor.App;
 
@@ -224,6 +226,7 @@ public sealed partial class MainWindow : IClubPanels
         clubVisionDrafts.Clear();
         clubAffiliationDrafts.Clear();
         clubAllowanceDrafts.Clear();
+        squadRuleDrafts.Clear();
         if (!clubsActive) return;
         if (backend.State.Status == ConnectionStatus.Connected) { rows = []; clubCache = null; competitionCache = null; }
         else gameDateBadge.IsVisible = false;
@@ -233,7 +236,8 @@ public sealed partial class MainWindow : IClubPanels
         (kitDrafts.TryGetValue(club.Address, out var kits) && kits.Count > 0)
         || pendingAffiliationRemovals.ContainsKey(club.Address) || clubFamiliarityDrafts.ContainsKey(club.Address)
         || (youthIntakeDrafts.TryGetValue(club.Address, out var youth) && youth.HasChanges)
-        || (clubAllowanceDrafts.TryGetValue(club.Address, out var allow) && allow.HasChanges);
+        || (clubAllowanceDrafts.TryGetValue(club.Address, out var allow) && allow.HasChanges)
+        || squadRuleDrafts.ContainsKey(club.Address);
 
     ulong IClubPanels.TeamOf(ClubEntry club) => ResolveSelectedTeam(club)?.Address ?? 0;
     bool IClubPanels.IsValid(ulong clubAddress) => IsClubObjectValid(clubAddress);
@@ -258,6 +262,7 @@ public sealed partial class MainWindow : IClubPanels
             return 0;
         }
         clubSaveInScalar = false;
+        count += SaveSquadRules(backend.Session, club);
         if (kitDrafts.TryGetValue(club.Address, out var pending) && pending.Count > 0)
         {
             count += pending.Count;
@@ -304,6 +309,7 @@ public sealed partial class MainWindow : IClubPanels
             kitDrafts.Remove(club.Address);
             pendingAffiliationRemovals.Remove(club.Address);
             clubAllowanceDrafts.Remove(club.Address);
+            squadRuleDrafts.Remove(club.Address);
             RenderClubEditor();
             status.Text = Loc.F("Some changes may have been saved. {0}", UserMessage.For(error));
             return;
@@ -406,7 +412,8 @@ public sealed partial class MainWindow : IClubPanels
         int kitChanges = kitDrafts.TryGetValue(club.Address, out var kits) ? kits.Values.Count(k => k.Colours.Count > 0 || k.Style is not null) : 0;
         int allowanceChanges = clubAllowanceDrafts.TryGetValue(club.Address, out var allow) ? allow.Pending.Count : 0;
         int allowanceInvalid = allow?.Invalid.Count ?? 0;
-        int total = scalarChanges + youthChanges + visionChanges + affiliationChanges + kitChanges + allowanceChanges;
+        int squadRuleChanges = squadRuleDrafts.GetValueOrDefault(club.Address)?.Count ?? 0;
+        int total = scalarChanges + youthChanges + visionChanges + affiliationChanges + kitChanges + allowanceChanges + squadRuleChanges;
         int invalidTotal = draft.InvalidCount + youthInvalid + allowanceInvalid;
 
         if (invalidTotal > 0) status.Text = Loc.F("{0} invalid value(s)", invalidTotal);
@@ -421,9 +428,10 @@ public sealed partial class MainWindow : IClubPanels
         if (youthChanges > 0 || youthInvalid > 0) dirty.Add(ClubSection.YouthIntake);
         if (visionChanges > 0) dirty.Add(ClubSection.ClubVision);
         if (affiliationChanges > 0) dirty.Add(ClubSection.Affiliations);
-        if (kitChanges > 0) dirty.Add(ClubSection.Kits);
+        if (kitChanges > 0 || draft.IsChanged(ClubField.AllowLicensedKits)) dirty.Add(ClubSection.Kits);
         if (clubFamiliarityDrafts.ContainsKey(club.Address)) dirty.Add(ClubSection.Relationships);
         if (allowanceChanges > 0 || allowanceInvalid > 0) dirty.Add(ClubSection.Information);
+        if (squadRuleChanges > 0) dirty.Add(ClubSection.Squads);
 
         if (!dirty.SetEquals(clubDirtySections))
         {
@@ -574,6 +582,14 @@ public sealed partial class MainWindow : IClubPanels
             return;
         }
 
+        if (selectedClubSection == ClubSection.Kits)
+        {
+            foreach (var group in ClubSectionLayout.BuildGroups(ClubSection.Kits, profile, access, club.Address, teamAddr, values))
+                clubEditorPanel.Children.Add(BuildClubGroupCard(group, draft));
+            RenderClubKits(session, club);
+            return;
+        }
+
         if (ClubFieldInfo.IsListSection(selectedClubSection))
         {
             RenderClubListSection(selectedClubSection, session, club, orderedTeams, activeTeam, teamAddr);
@@ -636,14 +652,16 @@ public sealed partial class MainWindow : IClubPanels
             }
 
             AddGroup("Overview");
-            if (backend.Session.StaffAllowances.IsSupported)
+            var session = backend.Session;
+            if (FindHumanClubManager(session, club.Address) is { } manager)
             {
                 StaffAllowanceSnapshot? allowanceSnapshot = null;
-                try { allowanceSnapshot = backend.Session.StaffAllowances.ReadForClub(club.Address); }
-                catch { allowanceSnapshot = null; }
-                ordered.Add((BuildClubStaffAllowancesCard(club, allowanceSnapshot), 7));
+                try { allowanceSnapshot = session.StaffAllowances.ReadForStaff(manager.StaffAddress); }
+                catch (MemoryAccessException) { }
+                if (allowanceSnapshot is not null)
+                    ordered.Add((BuildClubStaffAllowancesCard(club, allowanceSnapshot), 7));
+                ordered.Add((BuildBoardRequestsCard(session, club.Address), 3));
             }
-            ordered.Add((BuildClubBoardRequestsCard(backend.Session), 3));
             if (new ClubProjects(backend.Session.Memory, backend.Session.Profile, backend.Session.ModuleBase).IsSupported)
                 ordered.Add((BuildClubProjectsCard(backend.Session, club), 2));
             if (backend.Session.Profile.Competition?.Fixtures is not null && club.FirstTeam is not null)
@@ -1079,11 +1097,6 @@ public sealed partial class MainWindow : IClubPanels
         ulong teamAddr)
     {
         var version = clubRenderGeneration;
-        if (listSection == ClubSection.Kits)
-        {
-            RenderClubKits(session, club);
-            return;
-        }
         if (listSection == ClubSection.Relationships)
         {
             RenderClubRelationships(session, club);
@@ -2961,6 +2974,23 @@ public sealed partial class MainWindow : IClubPanels
         _ => UserMessage.For(error),
     };
 
+    StaffRecord? FindHumanClubManager(GameSession session, ulong clubAddress) =>
+        ReadCurrentHumanManagers(session).FirstOrDefault(manager => manager.Club?.Address == clubAddress);
+
+    IEnumerable<StaffRecord> ReadCurrentHumanManagers(GameSession session)
+    {
+        const short managerJobCode = 16;
+        if (backend.SaveChanged || backend.Data is not { } data || !ReferenceEquals(data.Session, session)) yield break;
+        foreach (var candidate in data.HumanManagers)
+        {
+            StaffRecord? current;
+            try { current = session.Staff.Reload(candidate.StaffAddress); }
+            catch (MemoryAccessException) { continue; }
+            if (current is { Kind.Manager: true, JobCode: managerJobCode, TeamAddress: not 0 } && current.Id == candidate.Id)
+                yield return current;
+        }
+    }
+
     int SaveClubAllowances(GameSession session, ClubEntry club, ClubAllowanceDraft allow)
     {
         if (allow.Invalid.Count > 0)
@@ -2971,8 +3001,9 @@ public sealed partial class MainWindow : IClubPanels
             return 0;
         }
 
-        var snapshot = allow.Snapshot ?? session.StaffAllowances.ReadForClub(club.Address)
-            ?? throw new InvalidOperationException(Loc.S("Extra staff allowances are available only for human-managed clubs."));
+        if (allow.Snapshot is not { } snapshot ||
+            FindHumanClubManager(session, club.Address)?.StaffAddress != snapshot.HumanStaffAddress)
+            throw new InvalidOperationException(Loc.S("Extra staff allowances are available only for human-managed clubs."));
 
         int saved = 0;
         foreach (var (field, value) in allow.Pending.OrderBy(kv => kv.Key))
@@ -2986,20 +3017,10 @@ public sealed partial class MainWindow : IClubPanels
         return saved;
     }
 
-    Control BuildClubStaffAllowancesCard(ClubEntry club, StaffAllowanceSnapshot? snapshot)
+    Control BuildClubStaffAllowancesCard(ClubEntry club, StaffAllowanceSnapshot snapshot)
     {
-        if (snapshot is null)
-        {
-            clubAllowanceDrafts.Remove(club.Address);
-            return ClubAdditionalStaffCard.Build(
-                null,
-                _ => null,
-                (_, _) => { },
-                (_, _) => { },
-                () => clubUpdating);
-        }
-
-        if (!clubAllowanceDrafts.TryGetValue(club.Address, out var allowDraft))
+        if (!clubAllowanceDrafts.TryGetValue(club.Address, out var allowDraft) ||
+            allowDraft.Snapshot?.HumanStaffAddress != snapshot.HumanStaffAddress)
             clubAllowanceDrafts[club.Address] = allowDraft = new();
         allowDraft.Snapshot = snapshot;
         allowDraft.Invalid.Clear();
