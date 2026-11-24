@@ -9,13 +9,17 @@ public enum ClubProjectKind { StadiumExpansion, FacilityUpgrade }
 
 public sealed record ClubProjectQueueOffsets(int Vector, int Club, int Date, int? Stadium, uint? Vtable)
 {
-    /// <summary>How to add an expansion row of the game's own shape (FM Touch 27.1.0, measured 24/11/2026); null where unmeasured.</summary>
+    /// <summary>How to add an expansion row of the game's own shape; null where unmeasured.</summary>
     public ClubProjectRowOffsets? NewRow { get; init; }
 }
 
 /// <summary>Fields of a stadium expansion row besides club, stadium and completion date: the row size, the start date, the
 /// seats added and the stadium's capacity and seating capacity when the works began.</summary>
-public sealed record ClubProjectRowOffsets(int Size, int StartDate, int AddedSeats, int Capacity, int SeatingCapacity);
+public sealed record ClubProjectRowOffsets(int Size, int StartDate, int AddedSeats, int Capacity, int SeatingCapacity)
+{
+    /// <summary>Use a game's own row for layouts whose remaining fields need to be copied.</summary>
+    public bool CopyTemplate { get; init; } = true;
+}
 /// <summary>
 /// The game's table of pending stadium changes (<c>db::DATABASE_TABLE&lt;db::STADIUM_CHANGE&gt;</c>), the record that
 /// actually finishes a capacity change. Windows Steam 27.1.0, 18/12/2026: moving Wrexham's completion date (+0x34)
@@ -23,10 +27,39 @@ public sealed record ClubProjectRowOffsets(int Size, int StartDate, int AddedSea
 /// moving only the finance manager's expansion row, or +0x30, did not. The CE preset "Complete Active Board
 /// Requests" writes this table as well as the finance manager queues.
 /// </summary>
-public sealed record StadiumChangeOffsets(uint TableRoot, uint TableVtable, int Vector, uint Vtable, int Stadium, int Date);
+public sealed record StadiumChangeOffsets(uint TableRoot, uint TableVtable, int Vector, uint Vtable, int Stadium, int Date)
+{
+    public StadiumChangeFilterOffsets? Filter { get; init; }
+
+    /// <summary>Rows that move a club's team to a new ground; null where unmeasured.</summary>
+    public StadiumMoveOffsets? Move { get; init; }
+}
+
+/// <summary>
+/// A stadium change of kind <see cref="Kind"/> moves the club's team to the new ground at <see cref="NewStadium"/> on its date,
+/// which is also held at <see cref="SecondDate"/>. FM Touch 27.1.0, BRA (Estádio Nabi Abi Chedid, 4-5 March 2028): with the
+/// new ground's construction row, its capacity change (kind 2) and this row (kind 1, team +0x18, old ground +0x20, new
+/// ground +0x28, dates +0x30/+0x34/+0x38) moved to today, the game moved the team to the 20,000 seat ground the next day
+/// and removed both changes; moving only the construction row finished the works without the move.
+/// </summary>
+public sealed record StadiumMoveOffsets(byte Kind, int NewStadium, int SecondDate);
+
+public sealed record StadiumChangeFilterOffsets(int Kind, byte ExpansionKind, int Flags, byte AppliedBit);
 
 public sealed record StadiumBoardRequestOffsets(int HolderType, int Requests, int Vector, int RequestType, int Flags,
-    int TargetDate, int CompletedDate);
+    int TargetDate, int CompletedDate)
+{
+    /// <summary>How to close a request whose project was finished; null where unmeasured.</summary>
+    public BoardRequestCloseOffsets? Close { get; init; }
+}
+
+/// <summary>
+/// FM Touch 27.1.0, Man Utd, 24/11/2026: the Board Requests screen shows an open request as Completed once its target date
+/// has come, its finance row is gone and the planning flag (bit 0 of <see cref="PlanningFlag"/>, set on an approved stadium
+/// expansion before works start) is clear; the game writes nothing to the request. The expansion outcome text
+/// "Added #1 seats" takes its number from <see cref="Outcome"/> (-1 until set).
+/// </summary>
+public sealed record BoardRequestCloseOffsets(int PlanningFlag, int Outcome);
 
 public sealed record ClubProjectOffsets(uint ManagerRoot, uint ManagerVtable, ClubProjectQueueOffsets Expansions, ClubProjectQueueOffsets Upgrades,
     int? StadiumPlans = null, int? StadiumPlanExpiry = null, StadiumBoardRequestOffsets? BoardRequests = null)
@@ -37,7 +70,7 @@ public sealed record ClubProjectOffsets(uint ManagerRoot, uint ManagerVtable, Cl
 /// <summary>A scheduled project. <paramref name="ChangeDateAddress"/> is the stadium change that completes an
 /// expansion (0 when the build has no stadium change table or the expansion has none).</summary>
 public sealed record ClubProject(ClubProjectKind Kind, ulong Address, ulong DateAddress, uint RawDate, DateOnly ScheduledDate,
-    ulong ChangeDateAddress = 0, uint ChangeRawDate = 0);
+    ulong ChangeDateAddress = 0, uint ChangeRawDate = 0, ulong MoveRow = 0, uint MoveRawDate = 0);
 public sealed record StadiumPlan(DateOnly? ExpiryDate, DateOnly? ReviewDate = null);
 public sealed record ClubProjectOverview(DateOnly Today, IReadOnlyList<ClubProject> Scheduled, StadiumPlan? Planning,
     DateOnly? AnnouncedExpansionDate = null);
@@ -48,6 +81,7 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
     const int DayMask = 0x1FF;
     const int MaxQueueBytes = 8 * 20000;
     const uint InactiveStadiumPlanDate = (1900u << 16) | 1u;
+    const ushort ExpandGroundRequest = 3000, BuildGroundRequest = 3001;
     public bool IsSupported => profile.Club is { Id: not null, Projects: not null } && profile.Stadium is not null;
 
     public IReadOnlyList<ClubProject> Read(ClubEntry club)
@@ -107,17 +141,53 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
                 if (project.ChangeDateAddress != 0 &&
                     !staged.TryWrite(project.ChangeDateAddress, BitConverter.GetBytes(WithDate(project.ChangeRawDate, today))))
                     throw new MemoryAccessException("Could not set the stadium change completion date");
+                if (project.MoveRow != 0 && profile.Club?.Projects?.StadiumChanges is { Move: { } move } changes)
+                    foreach (int field in new[] { changes.Date, move.SecondDate })
+                    {
+                        ulong at = project.MoveRow + (ulong)field;
+                        uint raw = BitConverter.ToUInt32(staged.Read(at, 4));
+                        if (!staged.TryWrite(at, BitConverter.GetBytes(WithDate(raw, today))))
+                            throw new MemoryAccessException("Could not set the stadium move date");
+                    }
+                CloseBoardRequest(staged, club, project.Kind, project.ScheduledDate, today, ReadAddedSeats(staged, project));
             }
         });
+    }
+
+    int? ReadAddedSeats(IProcessMemory source, ClubProject project) =>
+        project.Kind == ClubProjectKind.StadiumExpansion && profile.Club?.Projects?.Expansions.NewRow is { } shape
+            ? BitConverter.ToInt32(source.Read(project.Address + (ulong)shape.AddedSeats, 4)) : null;
+
+    /// <summary>
+    /// Closes the open board request that the project fulfils: its target date is the project's due date (and, for a stadium
+    /// expansion, its type is expand or build ground). Moves the target to today, clears the planning flag and, for an
+    /// expansion whose outcome number is unset, records the seats added. Does nothing where the close fields are unmeasured.
+    /// </summary>
+    void CloseBoardRequest(IProcessMemory staged, ClubEntry club, ClubProjectKind kind, DateOnly due, DateOnly today, int? seats)
+    {
+        if (profile.Club?.Projects?.BoardRequests is not { Close: { } close } offsets) return;
+        foreach (var (address, row) in new ClubListReader(staged, profile, moduleBase).ReadBoardRequests(club.Address, offsets))
+        {
+            if (!ClubListReader.IsOpenBoardRequest(row, offsets) ||
+                DecodeDate(BitConverter.ToUInt32(row, offsets.TargetDate)) != due ||
+                (BitConverter.ToUInt16(row, offsets.RequestType) is ExpandGroundRequest or BuildGroundRequest)
+                    != (kind == ClubProjectKind.StadiumExpansion))
+                continue;
+            if (!staged.TryWrite(address + (ulong)offsets.TargetDate,
+                    BitConverter.GetBytes(WithDate(BitConverter.ToUInt32(row, offsets.TargetDate), today))) ||
+                !staged.TryWrite(address + (ulong)close.PlanningFlag, [(byte)(row[close.PlanningFlag] & ~1)]) ||
+                (seats is > 0 && BitConverter.ToInt32(row, close.Outcome) == -1 &&
+                 !staged.TryWrite(address + (ulong)close.Outcome, BitConverter.GetBytes(seats.Value))))
+                throw new MemoryAccessException("Could not close the board request");
+        }
     }
 
     public bool CanFinishAnnounced => profile.Club?.Projects?.Expansions is { NewRow: not null, Stadium: not null }
         && profile.Competition?.ClubSwap is not null && profile.Stadium is not null;
 
     /// <summary>
-    /// Finishes an approved stadium expansion that has not started (shown as "Announced"): adds an expansion row due today,
-    /// copied from a row the game made and pointed at this club's home ground, so the game completes the works on its next
-    /// day as it does for its own rows. Rows are only added into the queue's spare capacity.
+    /// Finishes an approved stadium expansion that has not started (shown as "Announced"): adds an expansion row due today
+    /// for this club's home ground. Rows are only added into the queue's spare capacity.
     /// </summary>
     public void FinishAnnouncedExpansion(ClubEntry club, DateOnly today, Func<int, ulong> allocate)
     {
@@ -128,7 +198,7 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
         var shape = queue.NewRow!;
         if (ReadToday(memory) != today) throw new StaleObjectException("The game date changed since the projects were reviewed");
         var overview = ReadOverview(club);
-        if (overview.AnnouncedExpansionDate is null) throw new StaleObjectException("The club has no announced stadium expansion");
+        if (overview.AnnouncedExpansionDate is not { } announced) throw new StaleObjectException("The club has no announced stadium expansion");
         if (club.FirstTeam is not { } team) throw new StaleObjectException("The club has no senior team");
         ulong home = memory.ReadUInt64(team.Address + (ulong)profile.Competition!.ClubSwap!.TeamStadium);
         if (home == 0 || memory.ReadUInt64(home) != moduleBase + stadiumLayout.VtableRva) throw new StaleObjectException("The home ground is unavailable");
@@ -136,43 +206,67 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
         ulong header = memory.ReadUInt64(manager + (ulong)queue.Vector);
         var vector = memory.Read(header, 24);
         ulong begin = BitConverter.ToUInt64(vector), end = BitConverter.ToUInt64(vector, 8), capacity = BitConverter.ToUInt64(vector, 16);
-        if (begin == 0 || end < begin || capacity < end || (end - begin) % 8 != 0) throw new StaleObjectException("The club projects queue is invalid");
-        if (end + 8 > capacity) throw new InvalidOperationException("The game's project queue is full; continue a few days and try again");
+        if (begin == 0 || end < begin || capacity < end || (end - begin) % 8 != 0 || capacity - begin > MaxQueueBytes)
+            throw new StaleObjectException("The club projects queue is invalid");
 
-        // A row the game made for another club supplies the fields whose meaning is unknown.
-        byte[]? template = null;
-        for (ulong at = begin; at < end && template is null; at += 8)
-        {
-            ulong row = memory.ReadUInt64(at);
-            if (row == 0) continue;
-            ulong rowClub = memory.ReadUInt64(row + (ulong)queue.Club), venue = memory.ReadUInt64(row + (ulong)queue.Stadium!.Value);
-            if (rowClub != 0 && venue != 0 && memory.ReadUInt64(venue) == moduleBase + stadiumLayout.VtableRva)
-                template = memory.Read(row, shape.Size);
-        }
-        if (template is null) throw new InvalidOperationException("The game has no expansion row to copy yet");
+        // The Steam Mac constructor clears the other fields for a plain expansion.
+        var row = shape.CopyTemplate
+            ? ReadExpansionTemplate(queue, shape.Size, begin, end, stadiumLayout.VtableRva)
+            : new byte[shape.Size];
 
         var fields = new Stadiums.StadiumWriter(memory, profile, moduleBase).ReadFields(home);
         int seats = (int)fields.GetValueOrDefault(Stadiums.StadiumField.Capacity);
         int seating = (int)fields.GetValueOrDefault(Stadiums.StadiumField.SeatingCapacity, seats);
         int added = (int)Math.Max(1000, fields.GetValueOrDefault(Stadiums.StadiumField.ExpansionCapacity) - seats);
-        uint flags = BitConverter.ToUInt32(template, queue.Date) & 0xFE00u;
-        uint date = flags | (uint)today.DayOfYear | ((uint)today.Year << 16);
-        BitConverter.GetBytes(club.Address).CopyTo(template, queue.Club);
-        BitConverter.GetBytes(home).CopyTo(template, queue.Stadium!.Value);
-        BitConverter.GetBytes(date).CopyTo(template, queue.Date);
-        BitConverter.GetBytes(date).CopyTo(template, shape.StartDate);
-        BitConverter.GetBytes(added).CopyTo(template, shape.AddedSeats);
-        BitConverter.GetBytes(seats).CopyTo(template, shape.Capacity);
-        BitConverter.GetBytes(seating).CopyTo(template, shape.SeatingCapacity);
+        uint date = WithDate(BitConverter.ToUInt32(row, queue.Date), today);
+        BitConverter.GetBytes(club.Address).CopyTo(row, queue.Club);
+        BitConverter.GetBytes(home).CopyTo(row, queue.Stadium!.Value);
+        BitConverter.GetBytes(date).CopyTo(row, queue.Date);
+        BitConverter.GetBytes(date).CopyTo(row, shape.StartDate);
+        BitConverter.GetBytes(added).CopyTo(row, shape.AddedSeats);
+        BitConverter.GetBytes(seats).CopyTo(row, shape.Capacity);
+        BitConverter.GetBytes(seating).CopyTo(row, shape.SeatingCapacity);
 
         ulong block = allocate(shape.Size);
-        if (!memory.TryWrite(block, template)) throw new MemoryAccessException("Could not write the expansion row");
+        if (block == 0 || !memory.TryWrite(block, row)) throw new MemoryAccessException("Could not write the expansion row");
+        // A full queue moves to a larger pointer array outside the game's allocator, as club vision rows do.
+        ulong buffer = 0;
+        int used = (int)(end - begin), grown = used + 16 * 8;
+        if (end + 8 > capacity)
+        {
+            buffer = allocate(grown);
+            var pointers = memory.Read(begin, used);
+            if (buffer == 0 || !memory.TryWrite(buffer, pointers) || !memory.Read(buffer, used).AsSpan().SequenceEqual(pointers))
+                throw new MemoryAccessException("Could not copy the club projects queue");
+        }
         MemoryWriteBatch.Run(memory, staged =>
         {
-            if (staged.ReadUInt64(header + 8) != end) throw new StaleObjectException("The club projects queue changed");
-            if (!staged.TryWrite(end, BitConverter.GetBytes(block)) || !staged.TryWrite(header + 8, BitConverter.GetBytes(end + 8)))
+            if (staged.ReadUInt64(manager + (ulong)queue.Vector) != header ||
+                !staged.Read(header, vector.Length).AsSpan().SequenceEqual(vector) ||
+                (buffer != 0 && !staged.Read(begin, used).AsSpan().SequenceEqual(memory.Read(buffer, used))))
+                throw new StaleObjectException("The club projects queue changed");
+            var head = new byte[24];
+            ulong slot = buffer == 0 ? end : buffer + (ulong)used;
+            BitConverter.GetBytes(buffer == 0 ? begin : buffer).CopyTo(head, 0);
+            BitConverter.GetBytes(slot + 8).CopyTo(head, 8);
+            BitConverter.GetBytes(buffer == 0 ? capacity : buffer + (ulong)grown).CopyTo(head, 16);
+            if (!staged.TryWrite(slot, BitConverter.GetBytes(block)) || !staged.TryWrite(header, head))
                 throw new MemoryAccessException("Could not add the expansion row");
+            CloseBoardRequest(staged, club, ClubProjectKind.StadiumExpansion, announced, today, added);
         });
+    }
+
+    byte[] ReadExpansionTemplate(ClubProjectQueueOffsets queue, int size, ulong begin, ulong end, uint stadiumVtable)
+    {
+        for (ulong slot = begin; slot < end; slot += 8)
+        {
+            ulong row = memory.ReadUInt64(slot);
+            if (row == 0 || memory.ReadUInt64(row + (ulong)queue.Club) == 0) continue;
+            ulong venue = memory.ReadUInt64(row + (ulong)queue.Stadium!.Value);
+            if (venue != 0 && memory.ReadUInt64(venue) == moduleBase + stadiumVtable)
+                return memory.Read(row, size);
+        }
+        throw new InvalidOperationException("The game has no expansion row to copy yet");
     }
 
     public void ValidateUndo(IProcessMemory source, ClubEntry club, ClubProject project, DateOnly appliedDate)
@@ -181,6 +275,7 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
         {
             RawDate = project.DateAddress == 0 ? project.RawDate : WithDate(project.RawDate, appliedDate),
             ChangeRawDate = project.ChangeDateAddress == 0 ? 0 : WithDate(project.ChangeRawDate, appliedDate),
+            MoveRawDate = project.MoveRow == 0 ? 0 : WithDate(project.MoveRawDate, appliedDate),
             ScheduledDate = appliedDate,
         };
         if (!Read(source, club, DateOnly.MinValue).Contains(written))
@@ -217,11 +312,16 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
         var stadium = profile.Stadium ?? throw new NotSupportedException("Club projects are unavailable on this game build");
         var result = new List<ClubProject>();
         var changes = ReadStadiumChanges(source, club, today, layout, stadium);
+        var moves = ReadStadiumMoves(source, today, layout, stadium);
         ReadQueue(layout.Expansions, ClubProjectKind.StadiumExpansion);
         ReadQueue(layout.Upgrades, ClubProjectKind.FacilityUpgrade);
         // A change left without its finance queue row (FM drops the row once it is due) still finishes the works.
         foreach (var change in changes.Where(c => c.Owned))
-            result.Add(new(ClubProjectKind.StadiumExpansion, change.Row, 0, 0, change.Date, change.DateAddress, change.Raw));
+        {
+            int moved = moves.FindIndex(m => m.Venue == change.Venue && m.Date == change.Date);
+            result.Add(new(ClubProjectKind.StadiumExpansion, change.Row, 0, 0, change.Date, change.DateAddress, change.Raw,
+                moved >= 0 ? moves[moved].Row : 0, moved >= 0 ? moves[moved].Raw : 0));
+        }
         return result.OrderBy(project => project.ScheduledDate).ToArray();
 
         void ReadQueue(ClubProjectQueueOffsets queue, ClubProjectKind kind)
@@ -245,14 +345,17 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
                 if (DecodeDate(raw) is not { } date || date < today) continue;
                 // The change that finishes this expansion is the one for the same stadium on the same day.
                 int match = venue == 0 ? -1 : changes.FindIndex(c => c.Venue == venue && c.Date == date);
+                // A new ground also has the change that moves the team there on the same day.
+                int moved = venue == 0 ? -1 : moves.FindIndex(m => m.Venue == venue && m.Date == date);
+                var (moveRow, moveRaw) = moved >= 0 ? (moves[moved].Row, moves[moved].Raw) : (0UL, 0u);
                 if (match >= 0)
                 {
                     var change = changes[match];
                     changes.RemoveAt(match);
-                    result.Add(new(kind, address, dateAddress, raw, date, change.DateAddress, change.Raw));
+                    result.Add(new(kind, address, dateAddress, raw, date, change.DateAddress, change.Raw, moveRow, moveRaw));
                 }
                 else
-                    result.Add(new(kind, address, dateAddress, raw, date));
+                    result.Add(new(kind, address, dateAddress, raw, date, MoveRow: moveRow, MoveRawDate: moveRaw));
             }
         }
     }
@@ -272,12 +375,38 @@ public sealed class ClubProjects(IProcessMemory memory, OffsetProfile profile, u
             ulong row = BitConverter.ToUInt64(pointers, i);
             if (row == 0) continue;
             if (source.ReadUInt64(row) != moduleBase + t.Vtable) throw new StaleObjectException("The stadium change record is invalid");
+            if (t.Filter is { } filter &&
+                (source.Read(row + (ulong)filter.Kind, 1)[0] != filter.ExpansionKind ||
+                 (source.Read(row + (ulong)filter.Flags, 1)[0] & filter.AppliedBit) != 0)) continue;
             ulong venue = source.ReadUInt64(row + (ulong)t.Stadium);
             if (venue == 0 || source.ReadUInt64(venue) != moduleBase + stadium.VtableRva) continue;
             bool owned = source.ReadUInt64(venue + (ulong)stadium.Owner) == club.Address;
             ulong dateAddress = row + (ulong)t.Date;
             uint raw = BitConverter.ToUInt32(source.Read(dateAddress, 4));
             if (DecodeDate(raw) is { } date && date >= today) found.Add((venue, owned, row, dateAddress, raw, date));
+        }
+        return found;
+    }
+
+    /// <summary>Pending changes that move a team to a new ground, keyed by that ground.</summary>
+    List<(ulong Venue, ulong Row, uint Raw, DateOnly Date)> ReadStadiumMoves(
+        IProcessMemory source, DateOnly today, ClubProjectOffsets layout, Stadiums.StadiumOffsets stadium)
+    {
+        var found = new List<(ulong, ulong, uint, DateOnly)>();
+        if (layout.StadiumChanges is not { Move: { } move, Filter: { } filter } t) return found;
+        ulong table = source.ReadUInt64(moduleBase + t.TableRoot);
+        if (table == 0 || source.ReadUInt64(table) != moduleBase + t.TableVtable)
+            throw new StaleObjectException("The stadium change table is unavailable");
+        var pointers = ReadQueuePointers(source, table, t.Vector);
+        for (int i = 0; i < pointers.Length; i += 8)
+        {
+            ulong row = BitConverter.ToUInt64(pointers, i);
+            if (row == 0 || source.ReadUInt64(row) != moduleBase + t.Vtable ||
+                source.Read(row + (ulong)filter.Kind, 1)[0] != move.Kind) continue;
+            ulong venue = source.ReadUInt64(row + (ulong)move.NewStadium);
+            if (venue == 0 || source.ReadUInt64(venue) != moduleBase + stadium.VtableRva) continue;
+            uint raw = BitConverter.ToUInt32(source.Read(row + (ulong)t.Date, 4));
+            if (DecodeDate(raw) is { } date && date >= today) found.Add((venue, row, raw, date));
         }
         return found;
     }

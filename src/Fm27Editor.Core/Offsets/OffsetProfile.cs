@@ -331,11 +331,22 @@ public sealed class OffsetProfile
                     OptHex(projects, "stadiumPlans"), OptHex(projects, "stadiumPlanExpiry"),
                     projects.TryGetProperty("boardRequests", out var requests) ? new(
                         Hex(requests, "holderType"), Hex(requests, "requests"), Hex(requests, "vector"),
-                        Hex(requests, "type"), Hex(requests, "flags"), Hex(requests, "targetDate"), Hex(requests, "completedDate")) : null)
+                        Hex(requests, "type"), Hex(requests, "flags"), Hex(requests, "targetDate"), Hex(requests, "completedDate"))
+                    {
+                        Close = requests.TryGetProperty("close", out var close)
+                            ? new(Hex(close, "planningFlag"), Hex(close, "outcome")) : null,
+                    } : null)
                 {
                     StadiumChanges = projects.TryGetProperty("stadiumChanges", out var sc) ? new Clubs.StadiumChangeOffsets(
                         (uint)Hex(sc, "tableRoot"), (uint)Hex(sc, "tableVtable"), Hex(sc, "vector"), (uint)Hex(sc, "vtable"),
-                        Hex(sc, "stadium"), Hex(sc, "date")) : null,
+                        Hex(sc, "stadium"), Hex(sc, "date"))
+                    {
+                        Filter = sc.TryGetProperty("filter", out var filter) ? new(
+                            Hex(filter, "kind"), checked((byte)Hex(filter, "expansionKind")),
+                            Hex(filter, "flags"), checked((byte)Hex(filter, "appliedBit"))) : null,
+                        Move = sc.TryGetProperty("move", out var move) ? new(
+                            checked((byte)Hex(move, "kind")), Hex(move, "newStadium"), Hex(move, "secondDate")) : null,
+                    } : null,
                 } : null,
                 ClubVtableRva = (uint)Hex(k, "vtable"),
                 Name = Hex(k, "name"),
@@ -738,6 +749,12 @@ public sealed class OffsetProfile
                         H("holderType", requests.HolderType); H("requests", requests.Requests); H("vector", requests.Vector);
                         H("type", requests.RequestType); H("flags", requests.Flags);
                         H("targetDate", requests.TargetDate); H("completedDate", requests.CompletedDate);
+                        if (requests.Close is { } close)
+                        {
+                            w.WriteStartObject("close");
+                            H("planningFlag", close.PlanningFlag); H("outcome", close.Outcome);
+                            w.WriteEndObject();
+                        }
                         w.WriteEndObject();
                     }
                     WriteQueue("expansions", projects.Expansions);
@@ -747,6 +764,19 @@ public sealed class OffsetProfile
                         w.WriteStartObject("stadiumChanges");
                         H("tableRoot", sc.TableRoot); H("tableVtable", sc.TableVtable); H("vector", sc.Vector);
                         H("vtable", sc.Vtable); H("stadium", sc.Stadium); H("date", sc.Date);
+                        if (sc.Filter is { } filter)
+                        {
+                            w.WriteStartObject("filter");
+                            H("kind", filter.Kind); H("expansionKind", filter.ExpansionKind);
+                            H("flags", filter.Flags); H("appliedBit", filter.AppliedBit);
+                            w.WriteEndObject();
+                        }
+                        if (sc.Move is { } move)
+                        {
+                            w.WriteStartObject("move");
+                            H("kind", move.Kind); H("newStadium", move.NewStadium); H("secondDate", move.SecondDate);
+                            w.WriteEndObject();
+                        }
                         w.WriteEndObject();
                     }
                     w.WriteEndObject();
@@ -762,6 +792,7 @@ public sealed class OffsetProfile
                             w.WriteStartObject("newRow");
                             H("size", row.Size); H("startDate", row.StartDate); H("addedSeats", row.AddedSeats);
                             H("capacity", row.Capacity); H("seatingCapacity", row.SeatingCapacity);
+                            if (!row.CopyTemplate) w.WriteBoolean("copyTemplate", false);
                             w.WriteEndObject();
                         }
                         w.WriteEndObject();
@@ -995,6 +1026,9 @@ public sealed class OffsetProfile
     {
         NewRow = e.TryGetProperty("newRow", out var r)
             ? new(Hex(r, "size"), Hex(r, "startDate"), Hex(r, "addedSeats"), Hex(r, "capacity"), Hex(r, "seatingCapacity"))
+            {
+                CopyTemplate = !r.TryGetProperty("copyTemplate", out var copyTemplate) || copyTemplate.GetBoolean(),
+            }
             : null,
     };
 

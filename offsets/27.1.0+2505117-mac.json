@@ -461,8 +461,9 @@
       "boardRequests": { "holderType": "0x74", "requests": "0x78", "vector": "0x18", "type": "0x13C", "flags": "0x140", "targetDate": "0x12C", "completedDate": "0x130" },
       "managerRoot": "0x5785440",
       "managerVtable": "0x56C2070",
-      "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8" },
-      "upgrades": { "vector": "0x20", "club": "0x8", "date": "0x10", "vtable": "0x566A870" }
+      "expansions": { "vector": "0x18", "club": "0x0", "date": "0x18", "stadium": "0x8", "newRow": { "size": "0x40", "startDate": "0x1C", "addedSeats": "0x20", "capacity": "0x30", "seatingCapacity": "0x34", "copyTemplate": false } },
+      "upgrades": { "vector": "0x20", "club": "0x8", "date": "0x10", "vtable": "0x566A870" },
+      "stadiumChanges": { "tableRoot": "0x57A2F50", "tableVtable": "0x566E018", "vector": "0x88", "vtable": "0x5689D48", "stadium": "0x20", "date": "0x34", "filter": { "kind": "0x64", "expansionKind": "0x2", "flags": "0x65", "appliedBit": "0x8" } }
     },
     "listRootRva": "0x57A3180",
     "vtable": "0x56693C8",

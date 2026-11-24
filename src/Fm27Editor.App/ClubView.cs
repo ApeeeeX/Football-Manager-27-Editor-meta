@@ -662,8 +662,7 @@ public sealed partial class MainWindow : IClubPanels
                     ordered.Add((BuildClubStaffAllowancesCard(club, allowanceSnapshot), 7));
                 ordered.Add((BuildBoardRequestsCard(session, club.Address), 3));
             }
-            if (new ClubProjects(backend.Session.Memory, backend.Session.Profile, backend.Session.ModuleBase).IsSupported)
-                ordered.Add((BuildClubProjectsCard(backend.Session, club), 2));
+            // Club projects (BuildClubProjectsCard) stay hidden on every platform until a new ground can be finished from Planning.
             if (backend.Session.Profile.Competition?.Fixtures is not null && club.FirstTeam is not null)
                 ordered.Add((BuildClubSwapPreviewCard(backend.Session, club), 2));
             AddGroup("Facilities");

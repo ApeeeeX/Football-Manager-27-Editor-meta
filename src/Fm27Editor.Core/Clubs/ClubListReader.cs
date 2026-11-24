@@ -122,26 +122,12 @@ public sealed class ClubListReader(IProcessMemory memory, OffsetProfile profile,
     internal (DateOnly? Expansion, DateOnly? Review) ReadStadiumBoardRequests(ulong club, StadiumBoardRequestOffsets offsets, DateOnly today)
     {
         const ushort expandGround = 3000, buildNewGround = 3001;
-        if (Layout is not { } layout || profile.Team is not { } team ||
-            VectorSnapshot(Field(club, layout.Teams)) is not { Pointers: [var firstTeam, ..] } ||
-            !Vtable(firstTeam, team.VtableRva) || ReadVisionHolder(firstTeam, layout) is not { } owner ||
-            Bytes(Field(owner.Holder, offsets.HolderType), 1) is not [1 or 3 or 4])
-            return (null, null);
-
-        ulong requests = PointerAt(owner.Holder, offsets.Requests);
-        if (VectorSnapshot(Field(requests, offsets.Vector)) is not { } vector)
-            return (null, null);
-
-        int size = Math.Max(Math.Max(offsets.RequestType + 2, offsets.Flags + 1),
-            Math.Max(offsets.TargetDate + 4, offsets.CompletedDate + 4));
-        if (!Fits(size, (offsets.RequestType, 2), (offsets.Flags, 1), (offsets.TargetDate, 4), (offsets.CompletedDate, 4)))
-            return (null, null);
-
+        var rows = ReadBoardRequests(club, offsets);
         DateOnly? expansion = null, review = null;
-        for (int i = vector.Pointers.Length - 1; i >= 0; i--)
+        for (int i = rows.Count - 1; i >= 0; i--)
         {
-            if (Bytes(vector.Pointers[i], size) is not { } row || (row[offsets.Flags] & 1) != 0 ||
-                Date(row, offsets.CompletedDate) is not null || Date(row, offsets.TargetDate) is not { } date || date < today)
+            var row = rows[i].Bytes;
+            if (!IsOpenBoardRequest(row, offsets) || Date(row, offsets.TargetDate) is not { } date || date < today)
                 continue;
 
             switch (BitConverter.ToUInt16(row, offsets.RequestType))
@@ -153,6 +139,32 @@ public sealed class ClubListReader(IProcessMemory memory, OffsetProfile profile,
         }
         return (expansion, review);
     }
+
+    /// <summary>The club's board requests in list order, each read up to its last profile field.</summary>
+    internal IReadOnlyList<(ulong Address, byte[] Bytes)> ReadBoardRequests(ulong club, StadiumBoardRequestOffsets offsets)
+    {
+        if (Layout is not { } layout || profile.Team is not { } team ||
+            VectorSnapshot(Field(club, layout.Teams)) is not { Pointers: [var firstTeam, ..] } ||
+            !Vtable(firstTeam, team.VtableRva) || ReadVisionHolder(firstTeam, layout) is not { } owner ||
+            Bytes(Field(owner.Holder, offsets.HolderType), 1) is not [1 or 3 or 4])
+            return [];
+
+        ulong requests = PointerAt(owner.Holder, offsets.Requests);
+        if (VectorSnapshot(Field(requests, offsets.Vector)) is not { } vector) return [];
+
+        int size = new[] { offsets.RequestType + 2, offsets.Flags + 1, offsets.TargetDate + 4, offsets.CompletedDate + 4,
+            offsets.Close is { } close ? Math.Max(close.PlanningFlag + 1, close.Outcome + 4) : 0 }.Max();
+        if (!Fits(size, (offsets.RequestType, 2), (offsets.Flags, 1), (offsets.TargetDate, 4), (offsets.CompletedDate, 4)))
+            return [];
+        var result = new List<(ulong, byte[])>();
+        foreach (ulong address in vector.Pointers)
+            if (Bytes(address, size) is { } row) result.Add((address, row));
+        return result;
+    }
+
+    /// <summary>Not cancelled (flag bit 0) and without a completion date.</summary>
+    internal static bool IsOpenBoardRequest(byte[] row, StadiumBoardRequestOffsets offsets) =>
+        (row[offsets.Flags] & 1) == 0 && Date(row, offsets.CompletedDate) is null;
 
     (ulong Detail, ulong Holder)? ReadVisionHolder(ulong team, ClubListOffsets layout)
     {

@@ -482,7 +482,6 @@ public static partial class Loc
         m["Graphics: {0}"] = "Graphics: {0}";
         m["Not installed"] = "Chưa cài đặt";
         m["The downloaded file does not match the release checksum"] = "Tệp tải về không khớp mã kiểm tra checksum của bản phát hành";
-        m["The game's project queue is full; continue a few days and try again"] = "Hàng đợi dự án của game đã đầy; Continue vài ngày rồi thử lại";
         m["The game has no expansion row to copy yet"] = "Game chưa có dự án mở rộng nào để làm mẫu";
         m["Cannot swap clubs"] = "Không thể đổi CLB";
         m["{0} has already played its first round, so its clubs cannot be swapped this season."] = "{0} đã đá vòng đầu tiên nên không thể đổi CLB trong mùa này nữa.";
