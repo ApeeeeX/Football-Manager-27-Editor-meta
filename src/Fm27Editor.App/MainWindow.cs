@@ -950,7 +950,7 @@ public sealed partial class MainWindow : Window
                 _ = Task.Run(() =>
                 {
                     System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-                    GC.Collect(2, GCCollectionMode.Aggressive, blocking: false, compacting: true);
+                    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true); // Aggressive refuses a non-blocking collection
                 });
         }
     }

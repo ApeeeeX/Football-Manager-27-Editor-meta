@@ -23,4 +23,13 @@ public sealed class ShortcutsTests
         Assert.Null(MacElevation.HelperVersion("no marker here"u8));
         Assert.Null(MacElevation.HelperVersion("FM27_HELPER_VERSION=;"u8));
     }
+
+    [Fact]
+    public void A_refused_club_swap_says_why_instead_of_game_data_changed()
+    {
+        var started = new Fm27Editor.Core.Competitions.ClubSwapRefusedException(Fm27Editor.Core.Competitions.ClubSwapRefusal.SeasonStarted, "Premier League");
+        Assert.Equal("Premier League has already played its first round, so its clubs cannot be swapped this season.", UserMessage.For(started));
+        var country = new Fm27Editor.Core.Competitions.ClubSwapRefusedException(Fm27Editor.Core.Competitions.ClubSwapRefusal.DifferentCountry);
+        Assert.Equal("Choose a club from the same country.", UserMessage.For(country));
+    }
 }

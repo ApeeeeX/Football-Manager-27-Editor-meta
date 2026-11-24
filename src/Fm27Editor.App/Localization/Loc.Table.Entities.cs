@@ -482,6 +482,15 @@ public static partial class Loc
         m["Graphics: {0}"] = "Graphics: {0}";
         m["Not installed"] = "Chưa cài đặt";
         m["The downloaded file does not match the release checksum"] = "Tệp tải về không khớp mã kiểm tra checksum của bản phát hành";
+        m["Cannot swap clubs"] = "Không thể đổi CLB";
+        m["{0} has already played its first round, so its clubs cannot be swapped this season."] = "{0} đã đá vòng đầu tiên nên không thể đổi CLB trong mùa này nữa.";
+        m["Choose a club from the same country."] = "Hãy chọn CLB cùng quốc gia.";
+        m["Both clubs play in {0}. Choose a club from another division."] = "Hai CLB đang cùng chơi ở {0}. Hãy chọn CLB ở hạng đấu khác.";
+        m["{0} has no senior team in a league."] = "{0} không có đội một thi đấu ở giải vô địch.";
+        m["{0} has no league table yet, so its clubs cannot be swapped."] = "{0} chưa có bảng xếp hạng nên chưa thể đổi CLB.";
+        m["The fixture list of {0} is not complete yet."] = "Lịch thi đấu của {0} chưa đầy đủ.";
+        m["{0} has a points adjustment and cannot be swapped."] = "{0} đang bị cộng hoặc trừ điểm nên không thể đổi.";
+        m["Choose two different clubs."] = "Hãy chọn hai CLB khác nhau.";
         m["The disk image has no editor"] = "File dmg không chứa trình chỉnh sửa";
         m["The release has no checksum for the editor"] = "Bản phát hành không có mã checksum cho trình chỉnh sửa";
 

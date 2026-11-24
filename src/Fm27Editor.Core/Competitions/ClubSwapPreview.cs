@@ -24,9 +24,32 @@ public sealed record ClubSwapSchedule(ClubEntry First, ClubEntry Second, Competi
 
 internal sealed record ClubSwapFixtureSlot(ulong Address, ulong Owner, int Season, uint RawDate, ulong Home, ulong Away);
 
+public enum ClubSwapRefusal { SameClub, NoSeniorTeam, DifferentCountry, SameDivision, NoTable, SeasonStarted, FixturesIncomplete, PointsAdjustment }
+
+/// <summary>The two clubs cannot be swapped for a reason the player can act on; <see cref="Subject"/> names the club or league.</summary>
+public sealed class ClubSwapRefusedException(ClubSwapRefusal reason, string? subject = null)
+    : InvalidOperationException($"Club swap refused: {reason} {subject}".Trim())
+{
+    public ClubSwapRefusal Reason { get; } = reason;
+    public string? Subject { get; } = subject;
+}
+
 /// <summary>Verifies the two pre-kickoff schedules and previews the fixtures affected by exchanging the senior teams.</summary>
 public sealed class ClubSwapPreview(IProcessMemory memory, OffsetProfile profile, ulong moduleBase)
 {
+    /// <summary>Refuses a club that cannot take part in any swap: no senior league team, no table yet, or a season under way.</summary>
+    public void CheckClub(ClubEntry club)
+    {
+        if (profile.Competition is not { } competition) throw new NotSupportedException("Scheduled fixtures are unavailable on this build");
+        if (club.FirstTeam is not { } team) throw new ClubSwapRefusedException(ClubSwapRefusal.NoSeniorTeam, club.DisplayName);
+        ulong address = memory.ReadUInt64(team.Address + (ulong)competition.TeamCompetition);
+        var league = address == 0 ? null : new CompetitionRepository(memory, profile, moduleBase).Reload(address);
+        if (league is null) throw new ClubSwapRefusedException(ClubSwapRefusal.NoSeniorTeam, club.DisplayName);
+        var rows = new CompetitionStandingsAccess(memory, profile, moduleBase).Read(league);
+        if (rows is null || rows.Count < 2) throw new ClubSwapRefusedException(ClubSwapRefusal.NoTable, league.DisplayName);
+        if (rows.Any(row => row.Played != 0)) throw new ClubSwapRefusedException(ClubSwapRefusal.SeasonStarted, league.DisplayName);
+    }
+
     public ClubSwapSchedule Read(ClubEntry first, ClubEntry second)
     {
         if (profile.Competition is not { Fixtures: { } layout } competition ||
@@ -34,12 +57,15 @@ public sealed class ClubSwapPreview(IProcessMemory memory, OffsetProfile profile
             profile.Team is not { } teamLayout || profile.Contract is not { } contract)
             throw new NotSupportedException("Scheduled fixtures are unavailable on this build");
         if (first.Address == second.Address || first.Id == second.Id)
-            throw new InvalidOperationException("Choose two different clubs");
+            throw new ClubSwapRefusedException(ClubSwapRefusal.SameClub);
         var today = GameClock.Read(memory, profile, moduleBase) ?? throw new InvalidOperationException("Game date is unavailable");
         var firstTeam = RequireTeam(first);
         var secondTeam = RequireTeam(second);
-        if (firstTeam.Nation == 0 || firstTeam.Nation != secondTeam.Nation || firstTeam.Competition == secondTeam.Competition)
-            throw new InvalidOperationException("Choose clubs from different divisions in the same country");
+        if (firstTeam.Nation == 0 || firstTeam.Nation != secondTeam.Nation)
+            throw new ClubSwapRefusedException(ClubSwapRefusal.DifferentCountry);
+        if (firstTeam.Competition == secondTeam.Competition)
+            throw new ClubSwapRefusedException(ClubSwapRefusal.SameDivision,
+                new CompetitionRepository(memory, profile, moduleBase).Reload(firstTeam.Competition)?.DisplayName);
 
         var competitions = new CompetitionRepository(memory, profile, moduleBase);
         var firstLeague = competitions.Reload(firstTeam.Competition) ?? throw new StaleObjectException("The first division changed");
@@ -87,7 +113,9 @@ public sealed class ClubSwapPreview(IProcessMemory memory, OffsetProfile profile
 
         (ulong Team, ulong Competition, ulong Nation) RequireTeam(ClubEntry entry)
         {
-            if (entry.Id is not > 0 || entry.FirstTeam is not { } team || memory.ReadUInt64(entry.Address) != moduleBase + club.ClubVtableRva
+            if (entry.FirstTeam is not { } team)
+                throw new ClubSwapRefusedException(ClubSwapRefusal.NoSeniorTeam, entry.DisplayName);
+            if (entry.Id is not > 0 || memory.ReadUInt64(entry.Address) != moduleBase + club.ClubVtableRva
                 || BitConverter.ToInt32(memory.Read(entry.Address + (ulong)idOffset, 4)) != entry.Id
                 || memory.ReadUInt64(team.Address) != moduleBase + teamLayout.VtableRva
                 || memory.ReadUInt64(team.Address + (ulong)contract.TeamClub) != entry.Address)
@@ -99,8 +127,8 @@ public sealed class ClubSwapPreview(IProcessMemory memory, OffsetProfile profile
         HashSet<ulong> RequireMembers(CompetitionRecord league, ulong outgoing, ulong incoming)
         {
             var rows = standings.Read(league);
-            if (rows is null || rows.Count < 2 || rows.Any(row => row.Played != 0))
-                throw new InvalidOperationException("Both divisions must have an available table before their first match");
+            if (rows is null || rows.Count < 2) throw new ClubSwapRefusedException(ClubSwapRefusal.NoTable, league.DisplayName);
+            if (rows.Any(row => row.Played != 0)) throw new ClubSwapRefusedException(ClubSwapRefusal.SeasonStarted, league.DisplayName);
             var teams = rows.Select(row => row.Team).ToHashSet();
             if (teams.Count != rows.Count || !teams.Contains(outgoing) || teams.Contains(incoming))
                 throw new StaleObjectException("The league table and the teams' divisions disagree");
@@ -115,7 +143,7 @@ public sealed class ClubSwapPreview(IProcessMemory memory, OffsetProfile profile
                 .Where(groups => groups.Length == members * (members - 1)
                     && groups.All(group => group.Select(row => row.Date).Distinct().Count() == 1)).ToArray();
             if (seasons.Length != 1)
-                throw new InvalidOperationException("The scheduled league fixtures are incomplete or ambiguous");
+                throw new ClubSwapRefusedException(ClubSwapRefusal.FixturesIncomplete, league.DisplayName);
             var affected = seasons[0].Where(group => group.Key.Home == outgoing || group.Key.Away == outgoing).ToArray();
             slots.AddRange(affected.SelectMany(group => group).Select(row => row.Slot));
             return affected

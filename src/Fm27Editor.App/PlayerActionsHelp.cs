@@ -19,7 +19,7 @@ public sealed partial class MainWindow
         ["Undo captain change"] = "Undo the last captain or vice-captain appointment.",
         ["Heal"] = "Removes injuries and brings fitness and match sharpness back to full.",
         ["Inspire"] = "Makes the player as happy and motivated as possible.",
-        ["Destroy"] = "The opposite of Inspire: unhappy, tired and out of form.",
+        ["Destroy"] = "The opposite of Inspire: unhappy, tired and out of form, with Tactical Understanding at its minimum.",
         ["No Bans"] = "Removes match suspensions.",
         ["Freeze"] = "Keeps the player's attributes from changing while you play.",
         ["Unfreeze"] = "Lets the player's attributes change again.",

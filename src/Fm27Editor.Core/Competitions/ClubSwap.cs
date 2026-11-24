@@ -108,15 +108,16 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
         {
             ulong outgoing = club.FirstTeam!.Address;
             var stages = new CompetitionPrizeMoneyAccess(memory, profile, moduleBase);
-            var stage = stages.Read(league)?.Stage ?? throw Stale();
-            var rows = new CompetitionStandingsAccess(memory, profile, moduleBase).Read(league) ?? throw Stale();
+            var stage = stages.Read(league)?.Stage ?? throw Stale("no current stage for " + league.Name);
+            var rows = new CompetitionStandingsAccess(memory, profile, moduleBase).Read(league) ?? throw Stale("no league table for " + league.Name);
             var members = rows.Select(row => row.Team).ToHashSet();
-            if (members.Contains(incoming) || !members.Contains(outgoing) || rows.Any(row => row.Played != 0))
-                throw Stale();
+            if (members.Contains(incoming)) throw Stale(club.DisplayName + "'s league table already has the other team");
+            if (!members.Contains(outgoing)) throw Stale(club.DisplayName + " is not in the " + league.Name + " table");
+            if (rows.Any(row => row.Played != 0)) throw new ClubSwapRefusedException(ClubSwapRefusal.SeasonStarted, league.DisplayName);
             var row = rows.Single(row => row.Team == outgoing);
-            if (row.Club != club.Address || row.ClubId != club.Id) throw Stale();
+            if (row.Club != club.Address || row.ClubId != club.Id) throw Stale(club.DisplayName + "'s table row names another club");
             if (row.Points != 0)
-                throw new InvalidOperationException("A club with a points adjustment cannot be swapped");
+                throw new ClubSwapRefusedException(ClubSwapRefusal.PointsAdjustment, club.DisplayName);
 
             Require(stage, competition.PrizeMoney!.StageOwner, league.Address);
             Require(league.Address, 0, moduleBase + competition.VtableRva);
@@ -126,7 +127,7 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
             Require(club.Address, 0, moduleBase + profile.Club!.ClubVtableRva);
             Guard(club.Address + (ulong)profile.Club.Id!.Value, BitConverter.GetBytes(row.ClubId));
             var primary = ReadVector(stage + CompetitionStandingsAccess.TableOffset, 8, 256);
-            if (primary.Count != (ulong)rows.Count) throw Stale();
+            if (primary.Count != (ulong)rows.Count) throw Stale(league.Name + " table size differs from its rows");
             for (int i = 0; i < rows.Count; i++)
             {
                 var member = rows[i];
@@ -142,11 +143,11 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
                 ulong address = ReadGuard(mirror.Begin + index * 8);
                 ulong team = memory.ReadUInt64(address + (ulong)layout.StandingTeam);
                 if (team != outgoing) Require(address, layout.StandingTeam, team);
-                if (!mirrorMembers.TryAdd(team, address)) throw Stale();
+                if (!mirrorMembers.TryAdd(team, address)) throw Stale(league.Name + " second table lists a team twice");
                 Guard(address + CompetitionStandingsAccess.PlayedOffset, [0]);
             }
-            if (!members.SetEquals(mirrorMembers.Keys) || mirrorMembers[outgoing] == row.Address)
-                throw Stale();
+            if (!members.SetEquals(mirrorMembers.Keys)) throw Stale(league.Name + " second table has different teams");
+            if (mirrorMembers[outgoing] == row.Address) throw Stale(league.Name + " second table shares the first table's row");
 
             ulong seasonState = ReadGuard(outgoing + (ulong)layout.TeamSeasonState);
             var entries = ReadVector(seasonState + (ulong)layout.Competitions, layout.ParticipationStride, 64);
@@ -155,25 +156,22 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
             {
                 ulong address = entries.Begin + i * (ulong)layout.ParticipationStride;
                 ulong owner = memory.ReadUInt64(address);
-                if (owner == destination.Address) throw Stale();
+                if (owner == destination.Address) throw Stale(club.DisplayName + " already takes part in " + destination.Name);
                 if (owner == league.Address)
                 {
-                    if (entry != 0) throw Stale();
+                    if (entry != 0) throw Stale(club.DisplayName + " takes part in " + league.Name + " twice");
                     entry = address;
                 }
                 else Require(address, 0, owner);
             }
-            if (entry == 0) throw Stale();
+            if (entry == 0) throw Stale(club.DisplayName + " has no " + league.Name + " season entry");
             ulong stats = memory.ReadUInt64(entry + (ulong)layout.ParticipationStats);
             Require(stats, 0, moduleBase + layout.StatsVtable);
             ulong stadium = ReadGuard(outgoing + (ulong)layout.TeamStadium);
             Require(stadium, 0, moduleBase + profile.Stadium!.VtableRva);
-            ulong name = 0;
-            if (layout.StandingName is { } standingName)
-            {
-                name = memory.ReadUInt64(row.Address + (ulong)standingName);
-                if (name == 0) throw Stale();
-            }
+            // Before the first match the game can leave a row's name pointer empty (Man City on Steam macOS 27.1.0, 13/07/2026).
+            // The pointer moves with its club like the team does, so an empty one simply stays empty for that club.
+            ulong name = layout.StandingName is { } standingName ? memory.ReadUInt64(row.Address + (ulong)standingName) : 0;
             return new(row.Address, mirrorMembers[outgoing], name, entry, stats, stadium);
         }
 
@@ -182,7 +180,7 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
             ulong begin = ReadGuard(header), end = ReadGuard(header + 8), capacity = ReadGuard(header + 16);
             if (begin == 0 || begin % 8 != 0 || end <= begin || capacity < end
                 || (end - begin) % (ulong)stride != 0 || capacity - begin > (ulong)(stride * limit))
-                throw Stale();
+                throw Stale($"list at 0x{header:X} has an unexpected shape");
             return (begin, (end - begin) / (ulong)stride);
         }
 
@@ -195,24 +193,24 @@ public sealed class ClubSwap(IProcessMemory memory, OffsetProfile profile, ulong
         void Require(ulong address, int offset, ulong expected) => Guard(address + (ulong)offset, BitConverter.GetBytes(expected));
         void Guard(ulong address, byte[] expected)
         {
-            if (!memory.Read(address, expected.Length).AsSpan().SequenceEqual(expected)) throw Stale();
+            if (!memory.Read(address, expected.Length).AsSpan().SequenceEqual(expected)) throw Stale($"0x{address:X} does not hold the expected value");
             AddGuard(address, expected);
         }
         void AddGuard(ulong address, byte[] expected)
         {
-            if (guards.TryGetValue(address, out var guard) && !guard.Expected.AsSpan().SequenceEqual(expected)) throw Stale();
+            if (guards.TryGetValue(address, out var guard) && !guard.Expected.AsSpan().SequenceEqual(expected)) throw Stale($"0x{address:X} is checked against two values");
             guards[address] = new(address, expected, [], "League snapshot");
         }
         void Replace(ulong address, int offset, ulong before, ulong after, string label)
         {
             address += (ulong)offset;
             var expected = BitConverter.GetBytes(before);
-            if (!memory.Read(address, expected.Length).AsSpan().SequenceEqual(expected)) throw Stale();
+            if (!memory.Read(address, expected.Length).AsSpan().SequenceEqual(expected)) throw Stale(label + $" at 0x{address:X} does not hold the expected value");
             if (before != after) writes.Add(new(address, expected, BitConverter.GetBytes(after), label));
         }
     }
 
-    static StaleObjectException Stale() => new("The league membership or scheduled fixtures changed");
+    static StaleObjectException Stale(string why) => new($"The league membership or scheduled fixtures changed: {why}");
 
     sealed record Side(ulong PrimaryRow, ulong MirrorRow, ulong Name, ulong Participation, ulong Stats, ulong Stadium);
 }

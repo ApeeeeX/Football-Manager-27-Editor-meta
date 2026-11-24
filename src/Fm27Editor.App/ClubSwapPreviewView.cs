@@ -30,6 +30,9 @@ public sealed partial class MainWindow
     async Task ShowClubSwapPreviewAsync(GameSession session, ClubEntry first)
     {
         if (backend.Data is not { } data || !ReferenceEquals(data.Session, session) || backend.SaveChanged) return;
+        var preview = new ClubSwapPreview(session.Memory, session.Profile, session.ModuleBase);
+        // Refuse at once when this club cannot take part (season started, no table), before asking for the other club.
+        if (!await CheckAsync(() => preview.CheckClub(first))) return;
         var clubs = loadedClubs.ToArray();
         var second = await PickerDialog.Show(this, "Choose the other club", query =>
             clubs.Where(club => club.Id is > 0 && club.FirstTeam is not null && club.Address != first.Address)
@@ -38,6 +41,8 @@ public sealed partial class MainWindow
                 .ThenBy(item => item.Club.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                 .Take(150).Select(item => (item.Club.DisplayName, item.Club)).ToArray());
         if (second is null || !CurrentSave()) return;
+        if (!await CheckAsync(() => preview.Read(first, second))) return;
+
         var editor = new ClubSwap(session.Memory, session.Profile, session.ModuleBase);
         var message = new TextBlock { Text = Loc.F("Swap {0} and {1}?", first.DisplayName, second.DisplayName), TextWrapping = TextWrapping.Wrap };
         var close = new Button { Content = Loc.S("Close"), IsCancel = true };
@@ -64,12 +69,12 @@ public sealed partial class MainWindow
             {
                 await Task.Run(() =>
                 {
-                    var preview = new ClubSwapPreview(session.Memory, session.Profile, session.ModuleBase).Read(first, second);
+                    var schedule = preview.Read(first, second);
                     Func<ulong, int, ChangeLabel?>? labels = null;
                     backend.Edits.Execute("Club", $"{first.DisplayName} ↔ {second.DisplayName}", "Swap Clubs", () =>
                     {
                         if (!CurrentSave()) throw new SaveChangedException();
-                        labels = editor.Apply(preview);
+                        labels = editor.Apply(schedule);
                     }, (address, length) => labels?.Invoke(address, length));
                 });
                 status.Text = Loc.F("Swapped {0} and {1}. Continue in FM to see updates.", first.DisplayName, second.DisplayName);
@@ -77,8 +82,10 @@ public sealed partial class MainWindow
             }
             catch (Exception ex)
             {
+                // Nothing was written; trying again would fail the same way, so only Close is left.
+                window.Title = Loc.S("Cannot swap clubs");
                 message.Text = UserMessage.For(ex);
-                apply.IsEnabled = true;
+                apply.IsVisible = false;
             }
             finally { close.IsEnabled = true; }
         };
@@ -86,5 +93,19 @@ public sealed partial class MainWindow
         catch (Exception ex) { status.Text = UserMessage.For(ex); }
 
         bool CurrentSave() => ReferenceEquals(backend.Data, data) && !backend.SaveChanged;
+
+        async Task<bool> CheckAsync(Action check)
+        {
+            try
+            {
+                await Task.Run(check);
+                return CurrentSave();
+            }
+            catch (Exception ex)
+            {
+                await CreateNotice("Cannot swap clubs", UserMessage.For(ex), ("Close", true, null)).ShowDialog(this);
+                return false;
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 using Fm27Editor.Core.Game;
 using Fm27Editor.Core.Clubs;
+using Fm27Editor.Core.Competitions;
 using Fm27Editor.Core.Diagnostics;
 using Fm27Editor.Core.Memory;
 using Fm27Editor.Core.Players;
@@ -15,8 +16,22 @@ public static class UserMessage
         return Text(error);
     }
 
+    /// <summary>Why two clubs cannot be swapped, in words the player can act on.</summary>
+    public static string ClubSwapRefusal(ClubSwapRefusedException error) => error.Reason switch
+    {
+        Core.Competitions.ClubSwapRefusal.SeasonStarted => Loc.F("{0} has already played its first round, so its clubs cannot be swapped this season.", error.Subject),
+        Core.Competitions.ClubSwapRefusal.DifferentCountry => Loc.S("Choose a club from the same country."),
+        Core.Competitions.ClubSwapRefusal.SameDivision => Loc.F("Both clubs play in {0}. Choose a club from another division.", error.Subject),
+        Core.Competitions.ClubSwapRefusal.NoSeniorTeam => Loc.F("{0} has no senior team in a league.", error.Subject),
+        Core.Competitions.ClubSwapRefusal.NoTable => Loc.F("{0} has no league table yet, so its clubs cannot be swapped.", error.Subject),
+        Core.Competitions.ClubSwapRefusal.FixturesIncomplete => Loc.F("The fixture list of {0} is not complete yet.", error.Subject),
+        Core.Competitions.ClubSwapRefusal.PointsAdjustment => Loc.F("{0} has a points adjustment and cannot be swapped.", error.Subject),
+        _ => Loc.S("Choose two different clubs."),
+    };
+
     static string Text(Exception error) => error switch
     {
+        ClubSwapRefusedException ex => ClubSwapRefusal(ex),
         GameNotRunningException ex => Loc.S(ex.Message),
         SaveChangedException ex => Loc.S(ex.Message),
         UnsupportedBuildException => Loc.S("This game version is not supported"),

@@ -578,8 +578,25 @@ public sealed class GameSession : IDisposable
             ReadGameDate() ?? throw new InvalidOperationException("The in-game date could not be read"));
 
     /// <summary>Destroy, as FMRTE 27 defines it: the shared writers set morale/condition/sharpness/jadedness, contract
-    /// happiness, playing-time happiness and team cohesion; tactical familiarity is left alone.</summary>
-    public void Destroy(PlayerRecord player) => new PlayerDestroyer(_memory, Profile, Game.ModuleBase).Destroy(player);
+    /// happiness, playing-time happiness and team cohesion. The editor also drops the player's Tactical Understanding to 0%
+    /// on the team he plays for, where the build supports it; that stays until changed again.</summary>
+    public void Destroy(PlayerRecord player)
+    {
+        new PlayerDestroyer(_memory, Profile, Game.ModuleBase).Destroy(player);
+        var tactics = new TeamTacticalUnderstanding(_memory, Profile, Game.ModuleBase);
+        if (!tactics.IsSupported) return;
+        ulong clubAddress = PlayingClub.Of(_memory, Profile, Game.ModuleBase, player);
+        _tacticClubs ??= LoadClubs(Players.LoadAll());
+        if (_tacticClubs.FirstOrDefault(c => c.Address == clubAddress) is not { } club) return;
+        IReadOnlyList<PlayerRecord> alone = [player];
+        foreach (var team in club.Teams)
+        {
+            if (!ReadSquad(team.Address).Any(p => p.Address == player.Address)) continue;
+            for (int area = 0; area < TeamTacticalUnderstanding.Areas; area++)
+                tactics.Set(team.Address, alone, area, 0, AllocateGameBlock);
+        }
+        tactics.SetRoles(alone, 0);
+    }
 
     /// <summary>Golden Generation for one player (PA, CA, Professionalism, Ambition); returns the values written.</summary>
     public Fm27Editor.Core.Players.GoldenGenerationValues GoldenGeneration(PlayerRecord player, int minPa = Fm27Editor.Core.Players.GoldenGenerationWriter.DefaultMinPa, int maxPa = Fm27Editor.Core.Players.GoldenGenerationWriter.DefaultMaxPa) =>

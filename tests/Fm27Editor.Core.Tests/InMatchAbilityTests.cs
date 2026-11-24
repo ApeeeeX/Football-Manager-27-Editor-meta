@@ -8,7 +8,10 @@ namespace Fm27Editor.Core.Tests;
 public class InMatchAbilityTests
 {
     const int Dribbling = 0x488, Crossing = 0x487, InjuryProneness = 0x4B7;
-    const int ConditionInitial = 0x120A, Condition = 0x1220, Morale = 0x1233, Striker = 0x484;
+    const int ConditionInitial = 0x120A, Morale = 0x1233, Striker = 0x484;
+
+    /// <summary>The displayed condition word of each build, from its profile (Steam macOS measured live on 24/11/2026).</summary>
+    static int ConditionOf(bool touch) => LoadProfile(touch).InMatch!.Condition;
     static readonly ClubInfo United = new(0x100, "Man Utd", "Man Utd");
     static readonly ClubInfo Arsenal = new(0x200, "Arsenal", "Arsenal");
     static readonly ClubInfo Barcelona = new(0x300, "Barcelona", "Barcelona");
@@ -50,7 +53,9 @@ public class InMatchAbilityTests
                 Assert.Equal(95, copies[i, uid][Dribbling]);
                 Assert.Equal(15, copies[i, uid][InjuryProneness]);
                 Assert.Equal(10000, ReadCondition(copies[i, uid], ConditionInitial));
-                Assert.Equal(10000, ReadCondition(copies[i, uid], Condition));
+                Assert.Equal(10000, ReadCondition(copies[i, uid], ConditionOf(touch)));
+                if (LoadProfile(touch).InMatch!.LiveCondition is { } live)
+                    Assert.Equal(1_000_000u, BinaryPrimitives.ReadUInt32LittleEndian(copies[i, uid].AsSpan(live)));
                 Assert.Equal(20, copies[i, uid][Morale]);
             }
         Assert.Equal(untouchedOpponent, copies[1, 9]);
@@ -66,11 +71,11 @@ public class InMatchAbilityTests
         var match = Assert.Single(editor.FindFixtures(players));
         var before = copies[0, 1].ToArray();
         var targets = new HashSet<int> { 1 };
-        Assert.Throws<ArgumentOutOfRangeException>(() => editor.Apply(match, targets, new(false, new Dictionary<PlayerAttribute, int>(), 49)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => editor.Apply(match, targets, new(false, new Dictionary<PlayerAttribute, int>(), InMatchAbility.MinimumConditionPercent - 1)));
         TestWorld.Set64(copies[1, 1], 0x280, 0x3_0000);
         Assert.Throws<StaleObjectException>(() => editor.Apply(match, targets, new(false, new Dictionary<PlayerAttribute, int>(), 100)));
         Assert.Equal(before, copies[0, 1]);
-        Assert.Equal(7500, ReadCondition(copies[1, 1], Condition));
+        Assert.Equal(7500, ReadCondition(copies[1, 1], ConditionOf(false)));
     }
 
     [Theory]
@@ -97,7 +102,7 @@ public class InMatchAbilityTests
         Assert.Equal(expectedRaw, copies[0, 1][Dribbling]);
         Assert.Equal(expectedRaw, copies[1, 9][Crossing]);
         Assert.Equal(expectedRaw, copies[1, 9][InjuryProneness]);
-        Assert.Equal(10000, ReadCondition(copies[0, 9], Condition));
+        Assert.Equal(10000, ReadCondition(copies[0, 9], ConditionOf(touch)));
         Assert.Equal(20, copies[0, 9][Morale]);
         Assert.Equal(unchanged, copies[0, 10]);
         Assert.Equal(permanentPlayer, permanent[1]);
@@ -233,8 +238,9 @@ public class InMatchAbilityTests
             });
             for (int copy = 0; copy < 2; copy++)
             {
-                ulong matchAddress = 0x2000_0000 + (ulong)copy * 0x10_0000 + (ulong)uid * 0x2000;
-                var match = memory.Map(matchAddress, 0x1240, find: true);
+                ulong matchAddress = 0x2000_0000 + (ulong)copy * 0x10_0000 + (ulong)uid * 0x4000; // room for the live condition word past +0x2000
+                var im = profile.InMatch!;
+                var match = memory.Map(matchAddress, Math.Max(0x1240, (im.LiveCondition ?? 0) + 4), find: true);
                 copies[copy, uid] = match;
                 TestWorld.Set64(match, 0, TestWorld.ModuleBase + matchVtable);
                 TestWorld.Set64(match, 0x470, TestWorld.ModuleBase + dataVtable);
@@ -247,7 +253,8 @@ public class InMatchAbilityTests
                 match[Morale] = 12;
                 match[Striker] = uid is 1 or 8 ? (byte)20 : (byte)15;
                 TestWorld.Set16(match, ConditionInitial, 7500);
-                TestWorld.Set16(match, Condition, 7500);
+                TestWorld.Set16(match, im.Condition, 7500);
+                if (im.LiveCondition is { } live) BinaryPrimitives.WriteUInt32LittleEndian(match.AsSpan(live), 750_000);
             }
         }
         return (new InMatchAbility(memory, profile, TestWorld.ModuleBase), players, copies, permanent);

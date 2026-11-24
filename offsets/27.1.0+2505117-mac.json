@@ -24,7 +24,8 @@
     "positionBase": "0x478",
     "attributeBase": "0x487",
     "initialCondition": "0x120A",
-    "condition": "0x1220",
+    "condition": "0x2158",
+    "liveCondition": "0x2204",
     "morale": "0x1233"
   },
   "playerList": {

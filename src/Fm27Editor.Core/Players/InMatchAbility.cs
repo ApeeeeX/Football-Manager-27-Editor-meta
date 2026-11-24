@@ -40,6 +40,10 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
     readonly int firstAttribute = profile.Attributes.Values.Min();
     readonly int firstPosition = profile.Positions.Values.Min();
 
+    /// <summary>Lowest match condition the editor writes, in percent. A whole team at 10% stalled the match engine at half
+    /// time on Steam macOS (24/11/2026, Arsenal v Man Utd); one player at 10% played on normally.</summary>
+    public const int MinimumConditionPercent = 50;
+
     public bool CanSetMorale => offsets.Morale is not null;
     public IEnumerable<PlayerAttribute> Attributes => profile.Attributes.Keys;
 
@@ -195,7 +199,7 @@ public sealed class InMatchAbility(IProcessMemory memory, OffsetProfile profile,
     {
         ArgumentNullException.ThrowIfNull(fixture);
         if (playerIds.Count == 0) return default;
-        if (changes.ConditionPercent is < 50 or > 100) throw new ArgumentOutOfRangeException(nameof(changes), "Condition must be 50–100%");
+        if (changes.ConditionPercent is < MinimumConditionPercent or > 100) throw new ArgumentOutOfRangeException(nameof(changes), $"Condition must be {MinimumConditionPercent}–100%");
         if (changes.Morale is < 1 or > 20 || changes.Morale.HasValue && !CanSetMorale)
             throw new ArgumentOutOfRangeException(nameof(changes), "Morale must be supported and between 1 and 20");
         if (minimumFamiliarity is < 1 or > 20) throw new ArgumentOutOfRangeException(nameof(minimumFamiliarity));

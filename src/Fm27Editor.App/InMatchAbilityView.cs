@@ -61,7 +61,7 @@ public sealed partial class MainWindow
         ToolTip.SetTip(heal, Loc.S("Restore match condition to 100%."));
         ToolTip.SetTip(inspire, Loc.S("Set match morale to 20."));
         ToolTip.SetTip(allInOne, Loc.S("Restore match condition and morale, and raise performance attributes."));
-        ToolTip.SetTip(destroy, Loc.S("Set match condition to 50%, morale to 1 and performance attributes to 1."));
+        ToolTip.SetTip(destroy, Loc.S("Set match condition to 50%, morale to 1 and performance attributes to 1. The team's Tactical Understanding drops to its minimum and stays there after the match."));
         var availableAttributes = editor.Attributes.ToHashSet();
         var ratings = PlayerFields.All
             .Where(field => Enum.TryParse<PlayerAttribute>(field.Id, out var attribute) && availableAttributes.Contains(attribute))
@@ -75,7 +75,7 @@ public sealed partial class MainWindow
 
         var setRatings = MatchRatingPresets.Select(value => new Button { Content = value.ToString(Inv), MinWidth = 36 }).ToArray();
         var clearChanges = MatchButton("Clear changes");
-        var condition = MatchNumber(50, 100, "Optional");
+        var condition = MatchNumber(InMatchAbility.MinimumConditionPercent, 100, "Optional");
         condition.Width = 70;
         var morale = MatchNumber(1, 20, "Optional");
         morale.Width = 70;
@@ -283,18 +283,18 @@ public sealed partial class MainWindow
             finally { busy = false; Refresh(); }
         }
 
-        async Task ApplyAsync(InMatchChanges changes, bool clearDraft = false)
+        async Task<bool> ApplyAsync(InMatchChanges changes, bool clearDraft = false)
         {
-            if (busy || !CurrentSave() || CurrentFixture() is not { } fixture) return;
+            if (busy || !CurrentSave() || CurrentFixture() is not { } fixture) return false;
             var ids = Selected().Select(member => member.Player.Id!.Value).ToHashSet();
-            if (ids.Count == 0) return;
+            if (ids.Count == 0) return false;
             busy = true;
             notice.Text = Loc.S("Checking the match roster…");
             Refresh();
             try
             {
                 var fresh = await Task.Run(() => editor.FindFixtures(game.Players, cancellation), cancellation);
-                if (cancellation.IsCancellationRequested || !CurrentSave()) return;
+                if (cancellation.IsCancellationRequested || !CurrentSave()) return false;
                 var current = fresh.SingleOrDefault(fixture.IsSameFixture)
                     ?? throw new StaleObjectException("The match changed. Scan for matches again.");
                 writing = true;
@@ -320,6 +320,7 @@ public sealed partial class MainWindow
                     ? Loc.F("Updated {0} player(s) in this match.", result.applied.PlayersChanged)
                     : Loc.S("No match values needed changing");
                 status.Text = notice.Text;
+                return true;
             }
             catch (OperationCanceledException) { }
             catch (StaleObjectException) when (!cancellation.IsCancellationRequested && CurrentSave())
@@ -332,6 +333,38 @@ public sealed partial class MainWindow
             }
             catch (Exception ex) { notice.Text = UserMessage.For(ex); }
             finally { writing = busy = false; Refresh(); }
+            return false;
+        }
+
+        // Destroy also drops the teams' Tactical Understanding to nothing. Unlike the match values this is the players' own
+        // data, so it stays after the match; it is recorded in the edit history so it can be undone.
+        async Task LowerTacticalUnderstandingAsync(IReadOnlyList<ClubInfo> sides)
+        {
+            var session = game.Session;
+            var tactics = new TeamTacticalUnderstanding(session.Memory, session.Profile, session.ModuleBase);
+            if (!tactics.IsSupported) return;
+            int changed = 0;
+            try
+            {
+                foreach (var side in sides)
+                {
+                    if (loadedClubs.FirstOrDefault(club => club.Address == side.Address)?.FirstTeam?.Address is not { } team) continue;
+                    changed += await Task.Run(() =>
+                    {
+                        int rows = 0;
+                        edits.Execute("Club", side.DisplayName, "Destroy: Tactical Understanding", () =>
+                        {
+                            var squad = PlayingSquad(session, team);
+                            for (int area = 0; area < TeamTacticalUnderstanding.Areas; area++)
+                                rows += tactics.Set(team, squad, area, 0, session.AllocateGameBlock);
+                            rows += tactics.SetRoles(squad, 0);
+                        });
+                        return rows;
+                    });
+                }
+                if (changed > 0) status.Text = Loc.F("{0} and Tactical Understanding set to its minimum.", notice.Text);
+            }
+            catch (Exception ex) { status.Text = Loc.F("Tactical Understanding: {0}", UserMessage.For(ex)); }
         }
 
         void ResetDraft()
@@ -399,7 +432,12 @@ public sealed partial class MainWindow
         heal.Click += async (_, _) => await ApplyAsync(new(false, none, 100));
         inspire.Click += async (_, _) => await ApplyAsync(new(false, none, null, 20));
         allInOne.Click += async (_, _) => await ApplyAsync(new(true, none, 100, editor.CanSetMorale ? 20 : null));
-        destroy.Click += async (_, _) => await ApplyAsync(new(false, weaken, 50, editor.CanSetMorale ? 1 : null));
+        destroy.Click += async (_, _) =>
+        {
+            var sides = Selected().Select(member => member.Side).DistinctBy(side => side.Address).ToArray();
+            if (await ApplyAsync(new(false, weaken, 50, editor.CanSetMorale ? 1 : null)))
+                await LowerTacticalUnderstandingAsync(sides);
+        };
         clearChanges.Click += (_, _) => ResetDraft();
         apply.Click += async (_, _) =>
         {

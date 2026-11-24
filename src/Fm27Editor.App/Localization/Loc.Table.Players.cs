@@ -58,6 +58,7 @@ public static partial class Loc
         m["Undo the last captain or vice-captain appointment."] = "Hoàn tác lần chỉ định đội trưởng hoặc đội phó gần nhất.";
         m["Removes injuries and brings fitness and match sharpness back to full."] = "Xóa chấn thương và khôi phục tối đa thể lực và độ sắc bén thi đấu.";
         m["Makes the player as happy and motivated as possible."] = "Tăng tinh thần và động lực của cầu thủ lên mức tối đa.";
+        m["The opposite of Inspire: unhappy, tired and out of form, with Tactical Understanding at its minimum."] = "Ngược với Inspire: cầu thủ xuống tinh thần, mệt mỏi, mất phong độ và Tactical Understanding về mức thấp nhất.";
         m["The opposite of Inspire: unhappy, tired and out of form."] = "Khiến cầu thủ xuống tinh thần, mệt mỏi và mất phong độ.";
         m["Removes match suspensions."] = "Xóa án treo giò.";
         m["Keeps the player's attributes from changing while you play."] = "Giữ nguyên chỉ số của cầu thủ khi chơi.";
@@ -102,6 +103,9 @@ public static partial class Loc
         m["Restore match condition to 100%."] = "Hồi thể lực trong trận lên 100%.";
         m["Set match morale to 20."] = "Đưa tinh thần trong trận lên 20.";
         m["Restore match condition and morale, and raise performance attributes."] = "Hồi thể lực, tinh thần và tăng chỉ số thi đấu.";
+        m["Set match condition to 50%, morale to 1 and performance attributes to 1. The team's Tactical Understanding drops to its minimum and stays there after the match."] = "Đưa thể lực trong trận về 50%, tinh thần và chỉ số thi đấu về 1. Tactical Understanding của đội về mức thấp nhất và giữ nguyên sau trận.";
+        m["{0} and Tactical Understanding set to its minimum."] = "{0} Tactical Understanding đã về mức thấp nhất.";
+        m["Tactical Understanding: {0}"] = "Tactical Understanding: {0}";
         m["Set match condition to 50%, morale to 1 and performance attributes to 1."] = "Đưa thể lực về 50%, tinh thần và chỉ số thi đấu về 1.";
         m["Condition and morale"] = "Thể lực và tinh thần";
         m["Set all attributes"] = "Đặt toàn bộ chỉ số";
