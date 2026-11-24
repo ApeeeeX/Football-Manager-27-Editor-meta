@@ -107,7 +107,7 @@ Every change to `src/` or `offsets/` must update the newest `releases/<version>.
 scripts/check-release-log.sh origin/main HEAD
 ```
 
-- Keep one row per feature or fix: area, what changed, files, platforms checked, and status (**Done**, **Needs game check**, or **Partial**).
+- Keep one row per feature or fix: area, what changed, files, then one column each for Steam Windows, Game Pass, Steam macOS and Mac Touch. Each platform is **Checked**, **Reads**, **Not checked**, or **Missing**.
 - Update the same row when a feature changes. Move unfinished work to **Open work** and remove it when finished.
 - Record only what was actually checked. Do not write RVAs, offsets or private notes here.
 - After a version is tagged, create the next `releases/<version>.md`. `CHANGELOG.md` stays the user-facing summary.
