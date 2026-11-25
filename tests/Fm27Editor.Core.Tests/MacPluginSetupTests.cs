@@ -68,24 +68,32 @@ public class MacPluginSetupTests
         try
         {
             string plugin = Path.Combine(folder, "it's here", "libfm27editor_plugin.dylib"), log = Path.Combine(folder, "last-launch.txt");
-            Directory.CreateDirectory(Path.GetDirectoryName(plugin)!);
-            File.WriteAllText(plugin, "");
             string script = Path.Combine(folder, "fm27-launch"), output = Path.Combine(folder, "game.txt");
             File.WriteAllText(script, MacPluginSetup.LauncherScript(plugin, log));
-            // The "game" writes a variable the launcher exported and the argument after its own name.
-            var start = new System.Diagnostics.ProcessStartInfo("/bin/sh")
-            {
-                ArgumentList = { script, "FOO=bar", "DYLD_INSERT_LIBRARIES=/a/other.dylib", "/bin/sh", "-c",
-                    $"printf '%s|%s' \"$FOO\" \"$1\" > '{output}'", "game", "-windowed" },
-            };
-            using (var process = System.Diagnostics.Process.Start(start)!) process.WaitForExit(10000);
 
+            // No plugin file and no DYLD argument: nothing is injected, so the "game" runs on any Mac. It writes a variable
+            // the launcher exported and the argument after its own name.
+            Run(script, "FOO=bar", "/bin/sh", "-c", $"printf '%s|%s' \"$FOO\" \"$1\" > '{output}'", "game", "-windowed");
             Assert.Equal("bar|-windowed", File.ReadAllText(output));
+
+            // With the plugin and another tool's library the launcher joins both. The log is written before the game
+            // starts; whether dyld can load these stand-in files depends on the Mac's SIP setting, so only the log counts.
+            Directory.CreateDirectory(Path.GetDirectoryName(plugin)!);
+            File.WriteAllText(plugin, "");
+            Run(script, "DYLD_INSERT_LIBRARIES=/a/other.dylib", "/usr/bin/true");
             string[] lines = File.ReadAllLines(log);
             Assert.Equal($"DYLD_INSERT_LIBRARIES={plugin}:/a/other.dylib", lines[1]);
-            Assert.Equal("/bin/sh", lines[2]);
+            Assert.Equal("/usr/bin/true", lines[2]);
         }
         finally { Directory.Delete(folder, recursive: true); }
+
+        static void Run(params string[] arguments)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("/bin/sh");
+            foreach (string argument in arguments) start.ArgumentList.Add(argument);
+            using var process = System.Diagnostics.Process.Start(start)!;
+            process.WaitForExit(10000);
+        }
     }
 
     /// <summary>

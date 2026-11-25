@@ -51,7 +51,7 @@ public static partial class MacPluginSetup
     public static string LauncherPathFor(string home, string userName) =>
         home.Any(char.IsWhiteSpace)
             ? $"/Users/Shared/Fm27Editor-{Regex.Replace(userName, @"[^A-Za-z0-9._-]", "_")}/fm27-launch"
-            : Path.Combine(home, ".fm27editor", "fm27-launch");
+            : $"{home.TrimEnd('/')}/.fm27editor/fm27-launch"; // a macOS path, built the same on every OS
 
     /// <summary>
     /// The launcher's text. Leading NAME=value arguments (a player's own variables, or another tool's
