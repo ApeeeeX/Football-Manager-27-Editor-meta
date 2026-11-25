@@ -20,6 +20,16 @@ namespace Fm27Editor.App;
 
 public sealed partial class MainWindow : Window
 {
+    readonly CheckBox metaToggle = new()
+    {
+        Content = "META",
+        IsChecked = false,
+        FontSize = 12.5,
+        VerticalAlignment = VerticalAlignment.Center,
+        Foreground = UiKit.TextMuted,
+        Margin = new Thickness(8, 0, 8, 0),
+    };
+
     const string AllClubsLabel = "All Clubs";
     const string AllNationalitiesLabel = "All Nationalities";
     const string AllLeaguesLabel = "All Leagues";
@@ -219,15 +229,8 @@ public sealed partial class MainWindow : Window
         };
         DockPanel.SetDock(statusBar, Dock.Bottom); root.Children.Add(statusBar);
 
-        var metaToggle = new CheckBox
-        {
-            Content = "META",
-            IsChecked = false,
-            FontSize = 12.5,
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = UiKit.TextMuted,
-            Margin = new Thickness(8, 0, 8, 0),
-        };
+        metaToggle.Checked += (_, _) => ConfigureColumns();
+        metaToggle.Unchecked += (_, _) => ConfigureColumns();
         var moduleRowContent = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(metaToggle, Dock.Right);
         moduleRowContent.Children.Add(metaToggle);
@@ -1022,6 +1025,24 @@ public sealed partial class MainWindow : Window
         if (module is null) return;
         foreach (var c in module.Columns)
         {
+            if (module is PlayersModule && c.Title == "CA" && metaToggle.IsChecked == true)
+            {
+                grid.Columns.Add(new DataGridTemplateColumn
+                {
+                    Header = "MCA",
+                    Width = new DataGridLength(48),
+                    MinWidth = 42,
+                    CellStyleClasses = { "numeric" },
+                    CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) => new TextBlock
+                    {
+                        Text = p is null ? "" : "0",
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(8, 0),
+                    }),
+                });
+            }
+
             DataGridLength width = c.Title switch
             {
                 "Name" => new DataGridLength(1.5, DataGridLengthUnitType.Star),
