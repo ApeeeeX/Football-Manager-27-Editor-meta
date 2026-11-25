@@ -1,0 +1,214 @@
+{
+  "extends": "layouts/windows.json",
+  "build": "27.1.1\u002B2511875 Game Pass",
+  "module": "game_plugin.dll",
+  "buildStringRva": "0x48765B3",
+  "matchBuild": "27.1.1\u002B2511875",
+  "variant": "gamepass",
+  "imageSize": "0x17624000",
+  "peTimestamp": "0x6AFF583B",
+  "agreementRegionVtable": "0x4B28118",
+  "agreementVtable": "0x4A1A378",
+  "award": {
+    "vtable": "0x4A73248",
+    "listRootRva": "0x53E8908",
+    "listOffset": "0x30"
+  },
+  "club": {
+    "finance": {
+      "compactVtable": "0x4A6E2E8",
+      "vtable": "0x4A6E7B8"
+    },
+    "lists": {
+      "cultureVtable": "0x48A3708",
+      "visionHolderVtable": "0x4B1D048",
+      "cultureVtables": [
+        "0x48A3708",
+        "0x4B28DA8",
+        "0x48A37F8"
+      ],
+      "visionHolderVtables": [
+        "0x4B1D048",
+        "0x4B1D148",
+        "0x4B1D1C8",
+        "0x4B1D0C8",
+        "0x4B1CE58"
+      ]
+    },
+    "projects": {
+      "managerVtable": "0x4AFAAB8",
+      "stadiumChanges": {
+        "tableVtable": "0x4A17B28",
+        "vtable": "0x4C0F878",
+        "tableRoot": "0x53F8E30"
+      },
+      "upgrades": {
+        "vtable": "0x48D31F8"
+      },
+      "managerRoot": "0x53F9BF0"
+    },
+    "transferClauses": {
+      "appearanceFeeVtable": "0x4B23298",
+      "competitionBonusVtable": "0x4B23138",
+      "sellOnVtable": "0x4A27778"
+    },
+    "vtable": "0x4A5C628"
+  },
+  "competition": {
+    "clubSwap": {
+      "statsVtable": "0x4B3EEF8"
+    },
+    "fixtures": {
+      "nameVtable": "0x48ACC78",
+      "vtable": "0x4A3C908"
+    },
+    "prizeMoney": {
+      "holderVtable": "0x4A61F58",
+      "prizeVtable": "0x4B2E1E8",
+      "stageVtable": "0x4B2BF88"
+    },
+    "squadRulesContainerVtable": "0x4A6A0C8",
+    "vtable": "0x4A60638",
+    "listRootRva": "0x53EAF00",
+    "listOffset": "0x100"
+  },
+  "contract": {
+    "vtable": "0x4895AB8"
+  },
+  "gameUiVtable": "0x4876858",
+  "inMatch": {
+    "dataVtable": "0x4B7F238",
+    "playerVtable": "0x4B7F028"
+  },
+  "nation": {
+    "containerVtable": "0x4A6A0C8",
+    "preferences": {
+      "teamVtable": "0x4A6A0C8"
+    },
+    "rivalries": {
+      "teamVtable": "0x4A6A0C8"
+    },
+    "teams": {
+      "teamVtable": "0x4B21B28"
+    },
+    "vtable": "0x4A601A8",
+    "listRootRva": "0x53EAF00",
+    "listOffset": "0x240"
+  },
+  "nationAppointmentVtable": "0x4896028",
+  "player": {
+    "callUps": {
+      "vtable": "0x4B21B28",
+      "listRva": "0x53F9090"
+    },
+    "careerPlans": {
+      "continentVtable": "0x4B32608"
+    },
+    "cities": {
+      "vtable": "0x4B3E878",
+      "listRootRva": "0x53F8FE0"
+    },
+    "futureTransfers": {
+      "fullContractVtable": "0x4895AB8",
+      "loanContractVtable": "0x4B28708"
+    },
+    "injuries": {
+      "typeVtable": "0x4A1A0C8"
+    },
+    "languages": {
+      "languageVtable": "0x4C3DCC8"
+    },
+    "proposals": {
+      "bClubMoveVtable": "0x4A25C38",
+      "loanVtable": "0x4B66E08",
+      "managerVtable": "0x4A24DE8",
+      "transferVtable": "0x4C6C778",
+      "trialVtable": "0x4A2D798",
+      "managerRva": "0x53E7860",
+      "listRootRva": "0x53E8D80",
+      "changedFlag": "0x50"
+    },
+    "relations": {
+      "retiredPersonPointersVtable": "0x4A475F8",
+      "retiredPersonStringsVtable": "0x4A46DE8",
+      "personVtable": "0x4A93638",
+      "staffPersonVtable": "0x4AF2318"
+    },
+    "promises": {
+      "globalRootRva": "0x53E8198",
+      "globalVector": "0xF8"
+    },
+    "subtypeInsertions": [
+      {
+        "vtable": "0x4C9CB08",
+        "at": "0x280",
+        "length": "0xF8"
+      }
+    ]
+  },
+  "retirementManagerVtable": "0x4BF9670",
+  "stadium": {
+    "vtable": "0x4B45F38",
+    "listRootRva": "0x53EAF00",
+    "listOffset": "0x780"
+  },
+  "team": {
+    "vtable": "0x4A61288"
+  },
+  "youthCandidates": {
+    "managerVtable": "0x4C08FE0",
+    "managerRootRva": "0x53EBEC0"
+  },
+  "gameDate": {
+    "primary": {
+      "objectVtable": "0x4A24E28",
+      "rootRva": "0x53E8D80"
+    }
+  },
+  "staff": {
+    "personDetails": {
+      "personVtable": "0x4AF2318"
+    },
+    "personListRootRva": "0x53F8EF0",
+    "jobPersonAnchor": "0x0",
+    "kinds": [
+      {
+        "personVtable": "0x4AF2318",
+        "staffVtable": "0x4AF22A0",
+        "staffPart": "0x100"
+      },
+      {
+        "personVtable": "0x4C9D038",
+        "staffVtable": "0x4C9CAEC",
+        "staffPart": "0x100"
+      },
+      {
+        "personVtable": "0x4A45238",
+        "staffVtable": "0x4A451CC",
+        "staffPart": "0x440",
+        "manager": true
+      }
+    ]
+  },
+  "gameUiRva": "0x53E79C0",
+  "playerList": {
+    "rootRva": "0x53F8EA8"
+  },
+  "retirementManagerRva": "0x53EBBC0",
+  "teamTactics": {
+    "managersRva": "0x53EBC90"
+  },
+  "forceAccept": {
+    "boardRequestsRva": "0x14618F4",
+    "boardRequestsOriginal": "0F 85 F7 00 00 00",
+    "clubVisionRva": "0x1BD5075",
+    "clubVisionOriginal": "78 79"
+  },
+  "vectorAllocator": {
+    "instanceRva": "0x53F62A8"
+  },
+  "playerVtables": [
+    "0x4A93108",
+    "0x4C9CB08"
+  ]
+}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.6
+
+- **Football Manager 27.1.1:** supported on Steam Windows, Game Pass and Steam macOS. FM Touch has no 27.1.1 update yet.
+- **Mac with System Integrity Protection on:** the editor plugin now works. Steam could not start the game with the old setup ("OS error 260"); Set up now uses a small launcher instead. If you set up the plugin before, the editor asks you to set it up once more.
+- **Plugin setup window:** larger, step by step, in English or Vietnamese, and it tells you when Football Manager 27 or Steam is still open.
+
 ## 1.5.5
 
 - **Advanced Search is back on the toolbar,** next to Your Manager, on Windows and Mac. 1.5.3 and 1.5.4 removed it by mistake.
