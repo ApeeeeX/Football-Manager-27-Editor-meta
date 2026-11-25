@@ -219,13 +219,26 @@ public sealed partial class MainWindow : Window
         };
         DockPanel.SetDock(statusBar, Dock.Bottom); root.Children.Add(statusBar);
 
+        var metaToggle = new CheckBox
+        {
+            Content = "META",
+            IsChecked = false,
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = UiKit.TextMuted,
+            Margin = new Thickness(8, 0, 8, 0),
+        };
+        var moduleRowContent = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(metaToggle, Dock.Right);
+        moduleRowContent.Children.Add(metaToggle);
+        moduleRowContent.Children.Add(moduleBar);
         var moduleRow = new Border
         {
             Background = Brush("#11141E"),
             BorderBrush = UiKit.BorderSubtle,
             BorderThickness = new Thickness(0, 0, 0, 1),
             Padding = new Thickness(10, 3),
-            Child = moduleBar,
+            Child = moduleRowContent,
         };
         DockPanel.SetDock(moduleRow, Dock.Top); root.Children.Add(moduleRow);
 
