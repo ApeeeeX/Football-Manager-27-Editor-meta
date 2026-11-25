@@ -1035,7 +1035,7 @@ public sealed partial class MainWindow : Window
                     CellStyleClasses = { "numeric" },
                     CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) => new TextBlock
                     {
-                        Text = p is null ? "" : ScoutingMetrics.McaRounded(p).ToString(Inv),
+                        Text = p is null ? "" : McaCalculator.IsGoalkeeper(p) ? "-" : ScoutingMetrics.McaRounded(p).ToString(Inv),
                         HorizontalAlignment = HorizontalAlignment.Right,
                         VerticalAlignment = VerticalAlignment.Center,
                         Margin = new Thickness(8, 0),
@@ -1138,7 +1138,7 @@ public sealed partial class MainWindow : Window
         if (module is PlayersModule && metaToggle.IsChecked == true)
             ToolGrid.EnableSort<PlayerRecord>(grid, new Dictionary<string, Func<PlayerRecord, IComparable?>>
             {
-                ["MCA"] = p => ScoutingMetrics.McaRounded(p),
+                ["MCA"] = p => McaCalculator.IsGoalkeeper(p) ? null : ScoutingMetrics.McaRounded(p),
             });
     }
 
@@ -1466,7 +1466,7 @@ public sealed partial class MainWindow : Window
         {
             commands.Children.Insert(1, UiKit.StatBox("MCA", new TextBlock
             {
-                Text = ScoutingMetrics.McaRounded(player).ToString(Inv),
+                Text = McaCalculator.IsGoalkeeper(player) ? "-" : ScoutingMetrics.McaRounded(player).ToString(Inv),
                 FontSize = 16,
                 FontWeight = FontWeight.Black,
                 Foreground = Brush("#C084FC"),

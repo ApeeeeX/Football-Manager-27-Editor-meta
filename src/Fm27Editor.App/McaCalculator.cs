@@ -8,6 +8,8 @@ namespace Fm27Editor.App;
 /// </summary>
 internal static class McaCalculator
 {
+    public static bool IsGoalkeeper(PlayerRecord player) => player.Position(PlayerPosition.Goalkeeper) >= 15;
+
     readonly record struct Curve(PlayerAttribute Attribute, double[] Weights)
     {
         public double Maximum => Weights.Sum();
@@ -64,7 +66,7 @@ internal static class McaCalculator
 
     public static double Calculate(PlayerRecord player)
     {
-        if (PositiveMaximumPool <= 0) return 0;
+        if (IsGoalkeeper(player) || PositiveMaximumPool <= 0) return 0;
 
         double cumulative = 0;
         foreach (var curve in Curves)
