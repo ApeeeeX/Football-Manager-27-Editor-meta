@@ -355,6 +355,7 @@ public sealed class PlayersModule : IEditorModule
                 "Asking Price" => p.DisplayAskingPrice, "Wages" => p.Contract?.Wage,
                 "Ethnicity" => p.Ethnicity, "Treated As Non-EU In Italy" => p.TreatedAsNonEuInItaly,
                 "Regen" => RegenIds.IsRegen(p) is { } regen ? (regen ? 1 : 0) : null,
+                "MCA" => McaCalculator.IsGoalkeeper(p) ? null : ScoutingMetrics.McaRounded(p),
                 "RCA" => ScoutingMetrics.Rca(p),
                 "BestRoleScore" => (long)Math.Round(ScoutingMetrics.BestRole(p).Score),
                 "ProgressRate" => (long)Math.Round(RoleScores.ProgressRate(p)),

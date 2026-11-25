@@ -438,7 +438,8 @@ public sealed partial class MainWindow : Window
                 activeNumericRanges.Clear();
                 if (preset.NumericRanges is { } ranges)
                     foreach (var (key, range) in ranges)
-                        if (LegacyScoutingAvailability.Enabled || !LegacyScoutingAvailability.IsLegacyFilter(key)) activeNumericRanges[key] = range;
+                        if ((key != "MCA" || metaToggle.IsChecked == true) &&
+                            (LegacyScoutingAvailability.Enabled || !LegacyScoutingAvailability.IsLegacyFilter(key))) activeNumericRanges[key] = range;
                 activePreferredMoves = preset.RequiredPreferredMoves;
                 activePosMinRating = Math.Clamp(preset.PositionMinRating, 1, 20);
                 activeAttrThresholds.Clear();
@@ -550,7 +551,8 @@ public sealed partial class MainWindow : Window
             nationSource: connected ? () => nationCatalogue ?? backend.Session.Nations.LoadAll() : null,
             nationAccess: connected ? new Fm27Editor.Core.Nations.NationFieldAccess(backend.Session.Memory, backend.Session.Profile, backend.Session.ModuleBase) : null,
             nationLinks: connected ? backend.Session.NationLinks : null,
-            nationAgreements: connected ? backend.Session.NationAgreements : null);
+            nationAgreements: connected ? backend.Session.NationAgreements : null,
+            showMca: metaToggle.IsChecked == true);
         await dialog.ShowDialog(this);
         savedPresets = dialog.UpdatedPresets;
         if (dialog.Saved && dialog.SelectedScope != "Player")
@@ -1144,7 +1146,13 @@ public sealed partial class MainWindow : Window
 
     void RefreshMetaPresentation()
     {
+        bool removedMcaFilter = metaToggle.IsChecked != true && activeNumericRanges.Remove("MCA");
         ConfigureColumns();
+        if (removedMcaFilter)
+        {
+            RenderAttrChips();
+            Filter();
+        }
         if (playerTabs.Any(tab => ReferenceEquals(tab.Button, activeEntityButton))) RenderEditor();
     }
 
@@ -1169,7 +1177,9 @@ public sealed partial class MainWindow : Window
             Positions = activePositions.ToArray(),
             PositionThresholds = new Dictionary<PlayerPosition, int>(activePositionThresholds),
             PositionRanges = new Dictionary<PlayerPosition, NumericRange>(activePositionRanges),
-            NumericRanges = new Dictionary<string, NumericRange>(activeNumericRanges),
+            NumericRanges = activeNumericRanges
+                .Where(entry => entry.Key != "MCA" || metaToggle.IsChecked == true)
+                .ToDictionary(entry => entry.Key, entry => entry.Value),
             RequiredPreferredMoves = activePreferredMoves,
             PositionMinRating = activePosMinRating,
             AttributeThresholds = activeAttrThresholds.ToArray(),

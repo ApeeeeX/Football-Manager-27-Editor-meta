@@ -144,6 +144,7 @@ public sealed class AttributeFilterDialog : Window
     const string AllNationalities = "All Nationalities";
 
     readonly IReadOnlyList<PlayerRecord> allPlayers;
+    readonly bool showMca;
     readonly ComboBox divisionCombo = new() { HorizontalAlignment = HorizontalAlignment.Left, Height = 28, FontSize = 13, Width = 240, MinWidth = 240, MaxWidth = 240 };
     readonly ComboBox genderCombo = new() { HorizontalAlignment = HorizontalAlignment.Left, Height = 28, FontSize = 13, Width = 140, MinWidth = 140, MaxWidth = 140, ItemsSource = new[] { Loc.S("Men"), Loc.S("Women"), Loc.S("All") }, MaxDropDownHeight = 260 };
     readonly ComboBox clubCombo = new() { HorizontalAlignment = HorizontalAlignment.Left, Height = 28, FontSize = 13, Width = 240, MinWidth = 240, MaxWidth = 240 };
@@ -159,6 +160,8 @@ public sealed class AttributeFilterDialog : Window
     readonly TextBox maxAgeBox = new() { Watermark = Loc.S("Max"), Width = 54, HorizontalContentAlignment = HorizontalAlignment.Right };
     readonly TextBox minCaBox = new() { Watermark = Loc.S("Min"), Width = 58, HorizontalContentAlignment = HorizontalAlignment.Right };
     readonly TextBox maxCaBox = new() { Watermark = Loc.S("Max"), Width = 58, HorizontalContentAlignment = HorizontalAlignment.Right };
+    readonly TextBox minMcaBox = new() { Watermark = Loc.S("Min"), Width = 58, HorizontalContentAlignment = HorizontalAlignment.Right };
+    readonly TextBox maxMcaBox = new() { Watermark = Loc.S("Max"), Width = 58, HorizontalContentAlignment = HorizontalAlignment.Right };
     readonly TextBox minPaBox = new() { Watermark = Loc.S("Min"), Width = 58, HorizontalContentAlignment = HorizontalAlignment.Right };
     readonly TextBox maxPaBox = new() { Watermark = Loc.S("Max"), Width = 58, HorizontalContentAlignment = HorizontalAlignment.Right };
     sealed record RoleChoice(string? Code, string Label) { public override string ToString() => Label; }
@@ -380,9 +383,12 @@ public sealed class AttributeFilterDialog : Window
         NationFieldAccess? nationAccess = null,
         NationLinks? nationLinks = null,
         NationAgreements? nationAgreements = null,
-        NationSearchCriteria? initialNationCriteria = null)
+        NationSearchCriteria? initialNationCriteria = null,
+        bool showMca = false)
     {
         Title = Loc.S("Advanced Search");
+        this.showMca = showMca;
+        if (showMca) rangeInputs["MCA"] = (minMcaBox, maxMcaBox);
         this.initialScope = initialScope;
         this.staffSource = staffSource;
         this.clubSource = clubSource;
@@ -493,12 +499,16 @@ public sealed class AttributeFilterDialog : Window
         Limit(maxAgeBox, 0, 100);
         Limit(minCaBox, 1, 200);
         Limit(maxCaBox, 1, 200);
+        Limit(minMcaBox, 0, 200);
+        Limit(maxMcaBox, 0, 200);
         Limit(minPaBox, 1, 200);
         Limit(maxPaBox, 1, 200);
         minAgeBox.Text = initialFilter.MinAge?.ToString() ?? "";
         maxAgeBox.Text = initialFilter.MaxAge?.ToString() ?? "";
         minCaBox.Text = initialFilter.MinCa?.ToString() ?? "";
         maxCaBox.Text = initialFilter.MaxCa?.ToString() ?? "";
+        minMcaBox.Text = initialRanges.GetValueOrDefault("MCA")?.Min?.ToString() ?? "";
+        maxMcaBox.Text = initialRanges.GetValueOrDefault("MCA")?.Max?.ToString() ?? "";
         minPaBox.Text = initialFilter.MinPa?.ToString() ?? "";
         maxPaBox.Text = initialFilter.MaxPa?.ToString() ?? "";
         var roleChoices = new List<RoleChoice> { new(null, Loc.S("Best Role (Any)")) };
@@ -575,7 +585,7 @@ public sealed class AttributeFilterDialog : Window
         Content = root;
         SelectScope(initialScope switch { "Coach" => 1, "Club" => 2, "Nation" => 3, _ => 0 });
 
-        foreach (var tb in new[] { nameQueryBox, minAgeBox, maxAgeBox, minCaBox, maxCaBox, minPaBox, maxPaBox })
+        foreach (var tb in new[] { nameQueryBox, minAgeBox, maxAgeBox, minCaBox, maxCaBox, minMcaBox, maxMcaBox, minPaBox, maxPaBox })
             tb.TextChanged += (_, _) => { if (!updatingControls) UpdateSummary(); };
 
         RefreshPresetCombo(activePresetName);
@@ -976,25 +986,16 @@ public sealed class AttributeFilterDialog : Window
 
         stack.Children.Add(geoGrid);
 
-        // Row 2: Age, CA, PA ranges
-        var rangesRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        rangesRow.Children.Add(SectionLabel("AGE"));
-        rangesRow.Children.Add(minAgeBox);
-        rangesRow.Children.Add(MutedLabel("to"));
-        rangesRow.Children.Add(maxAgeBox);
-        rangesRow.Children.Add(new Border { Width = 18 });
+        // Keep the age range separate and use identical group columns so Min and Max align.
+        var ageRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        ageRow.Children.Add(RangeGroup("AGE", minAgeBox, maxAgeBox, 54));
+        stack.Children.Add(ageRow);
 
-        rangesRow.Children.Add(SectionLabel("CA"));
-        rangesRow.Children.Add(minCaBox);
-        rangesRow.Children.Add(MutedLabel("to"));
-        rangesRow.Children.Add(maxCaBox);
-        rangesRow.Children.Add(new Border { Width = 18 });
-
-        rangesRow.Children.Add(SectionLabel("PA"));
-        rangesRow.Children.Add(minPaBox);
-        rangesRow.Children.Add(MutedLabel("to"));
-        rangesRow.Children.Add(maxPaBox);
-        stack.Children.Add(rangesRow);
+        var abilityRangesRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, VerticalAlignment = VerticalAlignment.Center };
+        abilityRangesRow.Children.Add(RangeGroup("CA", minCaBox, maxCaBox));
+        if (showMca) abilityRangesRow.Children.Add(RangeGroup("MCA", minMcaBox, maxMcaBox));
+        abilityRangesRow.Children.Add(RangeGroup("PA", minPaBox, maxPaBox));
+        stack.Children.Add(abilityRangesRow);
 
         var roleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         roleRow.Children.Add(SectionLabel("ROLE"));
@@ -1097,6 +1098,28 @@ public sealed class AttributeFilterDialog : Window
         Foreground = Brush("#E2E8F0"),
         VerticalAlignment = VerticalAlignment.Center
     };
+
+    static Grid RangeGroup(string label, TextBox min, TextBox max, double inputWidth = 58)
+    {
+        var group = new Grid
+        {
+            Width = 48 + inputWidth * 2 + 38,
+            ColumnDefinitions = new ColumnDefinitions($"48,{inputWidth},Auto,{inputWidth}"),
+            ColumnSpacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var title = SectionLabel(label);
+        var separator = MutedLabel("to");
+        Grid.SetColumn(title, 0);
+        Grid.SetColumn(min, 1);
+        Grid.SetColumn(separator, 2);
+        Grid.SetColumn(max, 3);
+        group.Children.Add(title);
+        group.Children.Add(min);
+        group.Children.Add(separator);
+        group.Children.Add(max);
+        return group;
+    }
 
     static TextBlock MutedLabel(string text) => new()
     {
@@ -2115,6 +2138,7 @@ public sealed class AttributeFilterDialog : Window
         if (ResultClauses.Count > 0) parts.Add(Loc.F("{0} clause(s)", ResultClauses.Count));
         if (ResultMinAge is not null || ResultMaxAge is not null) parts.Add(Loc.S("Age"));
         if (ResultMinCa is not null || ResultMaxCa is not null) parts.Add(Loc.S("CA"));
+        if (ResultNumericRanges.ContainsKey("MCA")) parts.Add("MCA");
         if (ResultMinPa is not null || ResultMaxPa is not null) parts.Add(Loc.S("PA"));
         if (stagedPositions.Count > 0) parts.Add(Loc.F("{0} position(s)", stagedPositions.Count));
         if (staged.Count > 0) parts.Add(Loc.F("{0} attribute(s)", staged.Count));
