@@ -10,6 +10,14 @@
   "agreementVtable": "0x57C48F8",
   "agreementRegionVtable": "0x57E4120",
   "nationAppointmentVtable": "0x57C5360",
+  "vectorAllocator": {
+    "instanceRva": "0x593A130",
+    "pools": "0x18",
+    "pooled": "0x34",
+    "header": "0x30",
+    "poolCapacity": "0x144",
+    "poolHeader": "0x148"
+  },
   "playerList": {
     "rootRva": "0x5903F10",
     "beginOffset": "0x0",

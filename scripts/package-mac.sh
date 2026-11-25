@@ -46,6 +46,17 @@ chmod +x "$app/Contents/MacOS/Fm27EditorHelper"
 clang -O2 -arch "$helper_arch" -Wall -Wextra -dynamiclib -DFM27_PLUGIN \
     -o "$app/Contents/MacOS/libfm27editor_plugin.dylib" \
     src/Fm27Editor.Helper/fm27_helper.c
+# Steam itself can start the game under Rosetta. An arm64-only plugin then makes dyld abort the x86_64 game at launch,
+# so an empty x86_64 slice is added: the game starts, and the editor just cannot use the plugin in that process.
+if [ "$helper_arch" = "arm64" ]; then
+    stub=$(mktemp -d)
+    printf 'void fm27editor_plugin_x86_64_stub(void) {}\n' > "$stub/stub.c"
+    clang -O2 -arch x86_64 -dynamiclib -o "$stub/x86_64.dylib" "$stub/stub.c"
+    lipo -create "$app/Contents/MacOS/libfm27editor_plugin.dylib" "$stub/x86_64.dylib" \
+        -output "$stub/universal.dylib"
+    mv "$stub/universal.dylib" "$app/Contents/MacOS/libfm27editor_plugin.dylib"
+    rm -rf "$stub"
+fi
 
 # Build profiles next to the binary; packaged copies come from the publish output, the repo is the fallback.
 if [ -d "$publish/offsets" ]; then

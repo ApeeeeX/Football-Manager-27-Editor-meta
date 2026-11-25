@@ -306,19 +306,23 @@ public static partial class Loc
 
         // macOS plugin setup (MacPluginSetupView.cs)
         m["Set up the editor plugin"] = "Cài plugin của editor";
-        m["With System Integrity Protection on, the editor reads Football Manager 27 from Steam through its plugin. Set up adds the plugin to the game's Steam launch options; the game's files are not changed. Quit Football Manager 27 and Steam before you select Set up."] =
-            "Khi System Integrity Protection đang bật, editor đọc Football Manager 27 bản Steam qua plugin của mình. Cài đặt sẽ thêm plugin vào Launch Options của game trên Steam; file của game không bị thay đổi. Hãy thoát Football Manager 27 và Steam trước khi chọn Cài đặt.";
+        m["This Mac has System Integrity Protection (SIP) on. To read and edit Football Manager 27 without turning SIP off, the editor needs its plugin in the game. You only do this once."] =
+            "Máy Mac này đang bật System Integrity Protection (SIP). Để editor đọc và sửa Football Manager 27 mà không phải tắt SIP, cần cài plugin của editor vào game. Bạn chỉ cần làm việc này một lần.";
+        m["Quit Football Manager 27."] = "Thoát Football Manager 27.";
+        m["Quit Steam completely (Steam menu > Quit Steam)."] = "Thoát hẳn Steam (menu Steam > Quit Steam).";
+        m["Select Set up. The editor adds its plugin to the game's Steam launch options; the game's files are not changed."] =
+            "Chọn Cài đặt. Editor sẽ thêm plugin vào Launch Options của game trên Steam; file của game không bị thay đổi.";
+        m["Start Steam, play Football Manager 27, load your save, then select Load Game."] = "Mở Steam, chơi Football Manager 27, tải save rồi chọn Tải dữ liệu Game.";
+        m["The editor cannot read the game until the plugin is set up."] = "Editor không thể đọc game cho tới khi cài xong plugin.";
+        m["Football Manager 27: running, quit it"] = "Football Manager 27: đang chạy, hãy thoát game";
+        m["Football Manager 27: closed"] = "Football Manager 27: đã thoát";
+        m["Steam: running, quit it"] = "Steam: đang chạy, hãy thoát Steam";
+        m["Steam: closed"] = "Steam: đã thoát";
         m["Set up"] = "Cài đặt";
         m["Restart Football Manager 27"] = "Mở lại Football Manager 27";
         m["The plugin is set up, but this game was started without it. Quit Football Manager 27, start it again from Steam, load your save, then select Load Game."] =
             "Plugin đã được cài, nhưng game này được mở trước khi có plugin. Hãy thoát Football Manager 27, mở lại từ Steam, tải save rồi chọn Tải dữ liệu Game.";
-        m["Quit Steam first"] = "Hãy thoát Steam trước";
-        m["Steam rewrites its settings when it quits, which would undo the setup. Quit Football Manager 27 and Steam, then select Set up."] =
-            "Steam ghi lại cài đặt khi thoát, việc đó sẽ xóa mất phần cài đặt. Hãy thoát Football Manager 27 và Steam rồi chọn Cài đặt.";
         m["Plugin set up"] = "Đã cài plugin";
-        m["Start Steam and Football Manager 27, load your save, then select Load Game. If the game was open, quit it and start it again from Steam."] =
-            "Mở Steam và Football Manager 27, tải save rồi chọn Tải dữ liệu Game. Nếu game đang mở, hãy thoát rồi mở lại từ Steam.";
-        m["Plugin not set up"] = "Chưa cài được plugin";
         m["Steam is still running: it rewrites its settings when it quits"] = "Steam vẫn đang chạy. Hãy thoát Steam để ứng dụng không ghi đè cài đặt plugin.";
         m["The editor's plugin is missing from the app"] = "Không tìm thấy plugin trong gói cài đặt của trình chỉnh sửa.";
         m["Start Football Manager from Steam once, quit it, then set up again"] = "Mở Football Manager từ Steam một lần, sau đó thoát game và thử cài đặt lại.";

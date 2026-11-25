@@ -1,0 +1,237 @@
+{
+  "extends": "layouts/macos.json",
+  "build": "27.1.1\u002B2511875-mac",
+  "module": "game_plugin",
+  "buildStringRva": "0x51249EE",
+  "matchBuild": "27.1.1\u002B2511875",
+  "architecture": "arm64",
+  "imageSize": "0x59D4000",
+  "agreementRegionVtable": "0x5696C40",
+  "agreementVtable": "0x5677410",
+  "award": {
+    "vtable": "0x5677920",
+    "listRootRva": "0x5786228",
+    "listOffset": "0x30"
+  },
+  "club": {
+    "finance": {
+      "compactVtable": "0x5679EC0",
+      "vtable": "0x567A398"
+    },
+    "lists": {
+      "cultureVtable": "0x567B168",
+      "visionHolderVtable": "0x56D1330",
+      "cultureVtables": [
+        "0x567B168",
+        "0x567B0E0"
+      ],
+      "visionHolderVtables": [
+        "0x56D1330",
+        "0x56D1440",
+        "0x56D14D0"
+      ]
+    },
+    "projects": {
+      "managerVtable": "0x56D2070",
+      "stadiumChanges": {
+        "tableVtable": "0x567E018",
+        "vtable": "0x5699D48",
+        "tableRoot": "0x57B2F40"
+      },
+      "upgrades": {
+        "vtable": "0x567A870"
+      },
+      "managerRoot": "0x5795440"
+    },
+    "transferClauses": {
+      "appearanceFeeVtable": "0x569FFD8",
+      "competitionBonusVtable": "0x569FD98",
+      "sellOnVtable": "0x569FF18"
+    },
+    "vtable": "0x56793C8",
+    "listRootRva": "0x57B3170",
+    "fields": {
+      "CorporateFacilities": {
+        "path": "0x150-\u003E0x8AD"
+      }
+    }
+  },
+  "competition": {
+    "clubSwap": {
+      "statsVtable": "0x567B460"
+    },
+    "fixtures": {
+      "nameVtable": "0x5687DF0",
+      "vtable": "0x574F350"
+    },
+    "prizeMoney": {
+      "holderVtable": "0x5748948",
+      "prizeVtable": "0x57525F0",
+      "stageVtable": "0x57520C0",
+      "stageVtables": [
+        "0x57520C0"
+      ]
+    },
+    "squadRulesRuntime": {
+      "holderVtable": "0x5748948"
+    },
+    "vtable": "0x567B208",
+    "listRootRva": "0x57B30F0",
+    "listOffset": "0x1B78"
+  },
+  "contract": {
+    "vtable": "0x56881E8"
+  },
+  "gameDate": {
+    "primary": {
+      "objectVtable": "0x56D5FE0",
+      "rootRva": "0x57849F8"
+    },
+    "crossCheck": {
+      "objectVtable": "0x56D6128",
+      "rootRva": "0x5786800"
+    }
+  },
+  "gameUiVtable": "0x558E060",
+  "inMatch": {
+    "dataVtable": "0x577B3E8",
+    "playerVtable": "0x577BBF0",
+    "personVtable": "0x5666C00",
+    "playerStaffPersonVtable": "0x566CD60"
+  },
+  "nation": {
+    "containerVtable": "0x5692318",
+    "preferences": {
+      "teamVtable": "0x5692318"
+    },
+    "rivalries": {
+      "teamVtable": "0x5692318"
+    },
+    "teams": {
+      "teamVtable": "0x56921D0"
+    },
+    "vtable": "0x56920C0",
+    "listRootRva": "0x57B30F0",
+    "listOffset": "0x1B48"
+  },
+  "nationAppointmentVtable": "0x5677E78",
+  "officials": {
+    "vtable": "0x5692CB8",
+    "listRootRva": "0x57B3030"
+  },
+  "player": {
+    "callUps": {
+      "containerVtable": "0x5692318",
+      "vtable": "0x56921D0",
+      "listRva": "0x57B31A0"
+    },
+    "careerPlans": {
+      "continentVtable": "0x567CB30"
+    },
+    "cities": {
+      "vtable": "0x56789D8",
+      "listRootRva": "0x57B30F0"
+    },
+    "futureTransfers": {
+      "fullContractVtable": "0x56881E8",
+      "loanContractVtable": "0x5691968"
+    },
+    "injuries": {
+      "typeVtable": "0x568ECA0"
+    },
+    "languages": {
+      "languageVtable": "0x5691500"
+    },
+    "proposals": {
+      "bClubMoveVtable": "0x56A3700",
+      "loanVtable": "0x56A4878",
+      "managerVtable": "0x56D5FE0",
+      "transferVtable": "0x56A4460",
+      "trialVtable": "0x56A54E0",
+      "managerRva": "0x57849F8",
+      "listRootRva": "0x57849F8"
+    },
+    "relations": {
+      "retiredPersonPointersVtable": "0x5697928",
+      "retiredPersonStringsVtable": "0x56971C8",
+      "personVtable": "0x5666C00",
+      "staffPersonVtable": "0x5660E58"
+    },
+    "promises": {
+      "globalRootRva": "0x57856A0",
+      "globalVector": "0xF8"
+    },
+    "subtypeInsertions": [
+      {
+        "vtable": "0x566B3B8",
+        "at": "0x280",
+        "length": "0xF8"
+      }
+    ]
+  },
+  "retirementManagerVtable": "0x56D43F8",
+  "stadium": {
+    "vtable": "0x5699C38",
+    "listRootRva": "0x57B30F0",
+    "listOffset": "0x1AA0"
+  },
+  "team": {
+    "vtable": "0x569F2C8",
+    "listRootRva": "0x57B31A0"
+  },
+  "youthCandidates": {
+    "managerVtable": "0x56D4280",
+    "managerRootRva": "0x5788438"
+  },
+  "staff": {
+    "personDetails": {
+      "personVtable": "0x5660E58"
+    },
+    "personListRootRva": "0x57B3000",
+    "kinds": [
+      {
+        "personVtable": "0x5660E58",
+        "staffVtable": "0x565FAE0",
+        "staffPart": "0x208",
+        "personAnchor": "0x0"
+      },
+      {
+        "personVtable": "0x566CD60",
+        "staffVtable": "0x566B9E8",
+        "staffPart": "0x208",
+        "personAnchor": "0x0"
+      },
+      {
+        "personVtable": "0x5689CA0",
+        "staffVtable": "0x5688900",
+        "staffPart": "0x548",
+        "personAnchor": "0x340",
+        "manager": true
+      }
+    ]
+  },
+  "gameUiRva": "0x5784B60",
+  "playerList": {
+    "rootRva": "0x57B2FB8"
+  },
+  "retirementManagerRva": "0x57882B8",
+  "teamTactics": {
+    "managersRva": "0x5788320"
+  },
+  "globalArrays": {
+    "clubsSlotRva": "0x57B3170"
+  },
+  "forceAccept": {
+    "boardRequestsRva": "0x2766E38",
+    "boardRequestsOriginal": "A1 05 00 54",
+    "clubVisionRva": "0x1AB11CC",
+    "clubVisionOriginal": "A4 04 00 54"
+  },
+  "vectorAllocator": {
+    "instanceRva": "0x57A1750"
+  },
+  "playerVtables": [
+    "0x5665368",
+    "0x566B3B8"
+  ]
+}

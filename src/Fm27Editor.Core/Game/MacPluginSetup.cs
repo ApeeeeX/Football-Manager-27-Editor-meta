@@ -16,8 +16,10 @@ public enum MacPluginState
 }
 
 /// <summary>
-/// Sets up libfm27editor_plugin.dylib for every Steam copy of Football Manager, the way FMRTE's plugin wizard does:
-/// the plugin is copied to a fixed folder and each game's Steam launch options load it through DYLD_INSERT_LIBRARIES.
+/// Sets up libfm27editor_plugin.dylib for every Steam copy of Football Manager: the plugin is copied to a fixed folder,
+/// and each game's Steam launch options start the game through a small launcher script that puts the plugin in
+/// DYLD_INSERT_LIBRARIES. Steam on macOS runs launch options without a shell and treats the first word as the program,
+/// so the usual <c>DYLD_INSERT_LIBRARIES="…" %command%</c> fails with "OS error 260"; the launcher's path has no spaces.
 /// The fixed path and the plugin's own check for any "Football Manager" executable keep one setup working across
 /// editor updates and new game releases; a newly installed release is found at the next start. The game's own files
 /// are never changed. Needed only when System Integrity Protection's debugging restrictions are on, because they refuse
@@ -40,21 +42,68 @@ public static partial class MacPluginSetup
     /// <summary>The plugin shipped next to the editor's executable (Contents/MacOS in the app bundle).</summary>
     public static string BundledPluginPath => Path.Combine(AppContext.BaseDirectory, PluginFileName);
 
-    /// <summary>The value this setup puts in front of the game's command.</summary>
-    public static string PluginAssignment => $"DYLD_INSERT_LIBRARIES=\"{InstalledPluginPath}\"";
+    /// <summary>
+    /// The launcher the launch options name: an absolute path without whitespace, because Steam splits the options on
+    /// spaces and expands no <c>~</c>. A home folder with whitespace in its path uses /Users/Shared instead.
+    /// </summary>
+    public static string LauncherPath => LauncherPathFor(Home, Environment.UserName);
+
+    public static string LauncherPathFor(string home, string userName) =>
+        home.Any(char.IsWhiteSpace)
+            ? $"/Users/Shared/Fm27Editor-{Regex.Replace(userName, @"[^A-Za-z0-9._-]", "_")}/fm27-launch"
+            : Path.Combine(home, ".fm27editor", "fm27-launch");
+
+    /// <summary>
+    /// The launcher's text. Leading NAME=value arguments (a player's own variables, or another tool's
+    /// DYLD_INSERT_LIBRARIES) are exported, the plugin joins DYLD_INSERT_LIBRARIES, and the game replaces the script.
+    /// The last command line is kept in the editor's logs for support.
+    /// </summary>
+    public static string LauncherScript(string pluginPath, string logPath) => $$"""
+        #!/bin/sh
+        # Football Manager 27 Editor: Steam runs this in front of the game ("<this file> %command%").
+        # Steam can start this under Rosetta, which would run the game as x86_64; run natively first, as Steam's own
+        # launch would (before any DYLD variable is set, since /usr/bin/arch drops them).
+        if [ "$(/usr/sbin/sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ]; then
+            exec /usr/bin/arch -arm64 /bin/sh "$0" "$@"
+        fi
+        plugin={{ShellQuote(pluginPath)}}
+        libraries=
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                DYLD_INSERT_LIBRARIES=*) libraries="${1#DYLD_INSERT_LIBRARIES=}"; shift ;;
+                [A-Za-z_]*=*) export "$1"; shift ;;
+                *) break ;;
+            esac
+        done
+        # Steam passes the app bundle (…/fm.app), which cannot be run directly: run the executable its Info.plist names.
+        if [ -d "$1/Contents/MacOS" ]; then
+            bundle="$1"; shift
+            executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" 2>/dev/null)
+            set -- "$bundle/Contents/MacOS/$executable" "$@"
+        fi
+        if [ -f "$plugin" ]; then libraries="$plugin${libraries:+:$libraries}"; fi
+        if [ -n "$libraries" ]; then DYLD_INSERT_LIBRARIES="$libraries"; export DYLD_INSERT_LIBRARIES; fi
+        { date; echo "DYLD_INSERT_LIBRARIES=$libraries"; printf '%s\n' "$@"; } > {{ShellQuote(logPath)}} 2>/dev/null
+        exec "$@"
+
+        """;
+
+    static string LauncherLogPath => Path.Combine(Home, "Library", "Application Support", "Fm27Editor", "logs", "last-launch.txt");
+
+    static string ShellQuote(string value) => "'" + value.Replace("'", "'\\''") + "'";
 
     public static MacPluginState State()
     {
         if (!OperatingSystem.IsMacOS()) return MacPluginState.NotNeeded;
         var games = SteamGames();
         if (games.Count == 0 || !DebuggingRestricted()) return MacPluginState.NotNeeded;
-        if (!File.Exists(InstalledPluginPath)) return MacPluginState.Missing;
+        if (!File.Exists(InstalledPluginPath) || !File.Exists(LauncherPath)) return MacPluginState.Missing;
         foreach (string path in AccountConfigs())
         {
             string text = File.ReadAllText(path);
             foreach (string app in games.Keys)
                 if (FindAppBlock(text, app) is not null &&
-                    (ReadLaunchOptions(text, app) ?? "").Contains(InstalledPluginPath, StringComparison.Ordinal) is false)
+                    !(ReadLaunchOptions(text, app) ?? "").TrimStart().StartsWith(LauncherPath + " ", StringComparison.Ordinal))
                     return MacPluginState.Missing;
         }
         return MacPluginState.Installed;
@@ -98,8 +147,24 @@ public static partial class MacPluginSetup
     public static bool RefreshPlugin()
     {
         if (!File.Exists(InstalledPluginPath) || !File.Exists(BundledPluginPath)) return false;
-        if (File.ReadAllBytes(InstalledPluginPath).AsSpan().SequenceEqual(File.ReadAllBytes(BundledPluginPath))) return false;
+        bool changed = WriteLauncher(onlyIfPresent: true);
+        if (File.ReadAllBytes(InstalledPluginPath).AsSpan().SequenceEqual(File.ReadAllBytes(BundledPluginPath))) return changed;
         CopyPlugin();
+        return true;
+    }
+
+    /// <summary>Writes the launcher when its text differs; owner read/write/execute, everyone read/execute.</summary>
+    static bool WriteLauncher(bool onlyIfPresent)
+    {
+        string path = LauncherPath;
+        if (onlyIfPresent && !File.Exists(path)) return false;
+        string text = LauncherScript(InstalledPluginPath, LauncherLogPath);
+        if (File.Exists(path) && File.ReadAllText(path) == text) return false;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path + ".new", text, new UTF8Encoding(false));
+        File.SetUnixFileMode(path + ".new", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        File.Move(path + ".new", path, overwrite: true);
         return true;
     }
 
@@ -122,6 +187,7 @@ public static partial class MacPluginSetup
         if (SteamRunning()) throw new InvalidOperationException("Steam is still running: it rewrites its settings when it quits");
         if (!File.Exists(BundledPluginPath)) throw new FileNotFoundException("The editor's plugin is missing from the app", BundledPluginPath);
         CopyPlugin();
+        WriteLauncher(onlyIfPresent: false);
 
         var games = SteamGames();
         int entries = 0;
@@ -132,7 +198,7 @@ public static partial class MacPluginSetup
             {
                 if (FindAppBlock(text, app) is null) continue;
                 string current = ReadLaunchOptions(text, app) ?? "";
-                text = WriteLaunchOptions(text, app, WithPlugin(current, InstalledPluginPath));
+                text = WriteLaunchOptions(text, app, WithLauncher(current, LauncherPath));
                 entries++;
             }
             if (text == original) continue;
@@ -145,25 +211,24 @@ public static partial class MacPluginSetup
     }
 
     /// <summary>
-    /// The launch options with the plugin loaded once. An existing DYLD_INSERT_LIBRARIES (FMRTE's plugin, for example)
-    /// keeps its libraries and gains this one; options without %command% are game arguments and stay after it.
+    /// The launch options starting with the launcher, once. Our own DYLD_INSERT_LIBRARIES entry from earlier setups is
+    /// dropped (the launcher adds the plugin); another tool's libraries stay as an argument the launcher exports.
+    /// Options without %command% are game arguments and stay after it.
     /// </summary>
-    public static string WithPlugin(string options, string pluginPath)
+    public static string WithLauncher(string options, string launcherPath)
     {
         options = options.Trim();
         var assignment = DyldAssignment().Match(options);
         if (assignment.Success)
         {
-            var libraries = assignment.Groups["value"].Value.Split(':', StringSplitOptions.RemoveEmptyEntries).ToList();
-            if (libraries.Contains(pluginPath)) return options;
-            libraries.RemoveAll(library => library.EndsWith("/" + PluginFileName, StringComparison.Ordinal));
-            libraries.Add(pluginPath);
-            return options[..assignment.Index] + $"DYLD_INSERT_LIBRARIES=\"{string.Join(':', libraries)}\"" +
-                   options[(assignment.Index + assignment.Length)..];
+            var libraries = assignment.Groups["value"].Value.Split(':', StringSplitOptions.RemoveEmptyEntries)
+                .Where(library => !library.EndsWith("/" + PluginFileName, StringComparison.Ordinal)).ToList();
+            string kept = libraries.Count == 0 ? "" : $"DYLD_INSERT_LIBRARIES={string.Join(':', libraries)}";
+            options = Regex.Replace(options[..assignment.Index] + kept + options[(assignment.Index + assignment.Length)..], @"\s+", " ").Trim();
         }
-        string ours = $"DYLD_INSERT_LIBRARIES=\"{pluginPath}\"";
-        if (options.Contains("%command%", StringComparison.Ordinal)) return $"{ours} {options}";
-        return options.Length == 0 ? $"{ours} %command%" : $"{ours} %command% {options}";
+        if (options.StartsWith(launcherPath + " ", StringComparison.Ordinal)) return options;
+        if (options.Contains("%command%", StringComparison.Ordinal)) return $"{launcherPath} {options}";
+        return options.Length == 0 ? $"{launcherPath} %command%" : $"{launcherPath} %command% {options}";
     }
 
     [GeneratedRegex("DYLD_INSERT_LIBRARIES=(?:\"(?<value>[^\"]*)\"|(?<value>[^\\s\"]+))")]

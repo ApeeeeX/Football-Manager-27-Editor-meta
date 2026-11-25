@@ -408,6 +408,10 @@ public class BuildVerifierNegativeTests
         ProfileJsonResolver.SetByPath(compact, "competition.prizeMoney.stageVtables",
             new JsonArray($"0x{vtByClassAndOff[("sicomps::LEAGUE_STAGE", 0)]:X}"));
 
+        // The synthetic module has no inline vector allocator (the macOS layout gained one for 27.1.1), so allocating
+        // writes here use the plain heap as they did before; the allocator is checked against the live game instead.
+        compact["vectorAllocator"] = null;
+
         // Emit optional INTERACTION_MANAGER vtable into RTTI too so NewBuild/RTTI has everything clean.
         uint interactionVt = GetOrEmit("INTERACTION_MANAGER", 0);
 

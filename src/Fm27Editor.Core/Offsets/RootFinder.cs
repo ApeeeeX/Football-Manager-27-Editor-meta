@@ -83,13 +83,16 @@ public static class RootFinder
                 ulong count = (end - begin) / 8;
                 if (count is < 512 or > 65536) continue;
 
+                // Windows keeps one pool for sizes 1-16 (p1 == p16); macOS 27.1.x keeps one per size (capacity 8 at
+                // index 1, 16 at index 16), so only the rising capacities are required.
                 if (!TryReadU64(memory, begin + 1 * 8, out ulong p1) || !IsHeap(p1) ||
-                    !TryReadU64(memory, begin + 16 * 8, out ulong p16) || p1 != p16 ||
+                    !TryReadU64(memory, begin + 16 * 8, out ulong p16) || !IsHeap(p16) ||
                     !TryReadU64(memory, begin + 64 * 8, out ulong p64) || !IsHeap(p64) ||
                     !TryReadU64(memory, begin + 256 * 8, out ulong p256) || !IsHeap(p256))
                     continue;
 
-                if (!TryReadPool(p16, out int c16) || c16 < 16 ||
+                if (!TryReadPool(p1, out int c1) || c1 < 1 || c1 > 16 ||
+                    !TryReadPool(p16, out int c16) || c16 < 16 || c1 > c16 ||
                     !TryReadPool(p64, out int c64) || c64 < 64 ||
                     !TryReadPool(p256, out int c256) || c256 < 256 ||
                     c16 > c64 || c64 > c256 || c256 > (1 << 20))
