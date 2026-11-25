@@ -82,8 +82,9 @@ public static partial class MacPluginSetup
             set -- "$bundle/Contents/MacOS/$executable" "$@"
         fi
         if [ -f "$plugin" ]; then libraries="$plugin${libraries:+:$libraries}"; fi
-        if [ -n "$libraries" ]; then DYLD_INSERT_LIBRARIES="$libraries"; export DYLD_INSERT_LIBRARIES; fi
+        # Logged before DYLD_INSERT_LIBRARIES is set, so the libraries are never loaded into the logging commands.
         { date; echo "DYLD_INSERT_LIBRARIES=$libraries"; printf '%s\n' "$@"; } > {{ShellQuote(logPath)}} 2>/dev/null
+        if [ -n "$libraries" ]; then DYLD_INSERT_LIBRARIES="$libraries"; export DYLD_INSERT_LIBRARIES; fi
         exec "$@"
 
         """;
