@@ -62,6 +62,7 @@ internal static class ScoutingMetrics
     static Entry Get(PlayerRecord player) => entries.GetValue(player, p => new(p));
     public static int Rca(PlayerRecord player) => Get(player).Rca;
     public static double Mca(PlayerRecord player) => Get(player).Mca;
+    public static int McaRounded(PlayerRecord player) => (int)Math.Round(Get(player).Mca, MidpointRounding.AwayFromZero);
     public static RoleScore BestRole(PlayerRecord player) => Get(player).BestRole;
     public static PersonalityClassification Personality(PlayerRecord player)
     {

@@ -1029,13 +1029,13 @@ public sealed partial class MainWindow : Window
             {
                 grid.Columns.Add(new DataGridTemplateColumn
                 {
-                    Header = "MCA",
+                    Header = new TextBlock { Text = "MCA", Tag = "MCA" },
                     Width = new DataGridLength(48),
                     MinWidth = 42,
                     CellStyleClasses = { "numeric" },
                     CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) => new TextBlock
                     {
-                        Text = p is null ? "" : ScoutingMetrics.Mca(p).ToString("0.00", Inv),
+                        Text = p is null ? "" : ScoutingMetrics.McaRounded(p).ToString(Inv),
                         HorizontalAlignment = HorizontalAlignment.Right,
                         VerticalAlignment = VerticalAlignment.Center,
                         Margin = new Thickness(8, 0),
@@ -1134,6 +1134,12 @@ public sealed partial class MainWindow : Window
                 })
             });
         }
+
+        if (module is PlayersModule && metaToggle.IsChecked == true)
+            ToolGrid.EnableSort<PlayerRecord>(grid, new Dictionary<string, Func<PlayerRecord, IComparable?>>
+            {
+                ["MCA"] = p => ScoutingMetrics.McaRounded(p),
+            });
     }
 
     PlayerFilter BuildCurrentFilter() => new()
