@@ -229,8 +229,8 @@ public sealed partial class MainWindow : Window
         };
         DockPanel.SetDock(statusBar, Dock.Bottom); root.Children.Add(statusBar);
 
-        metaToggle.Checked += (_, _) => ConfigureColumns();
-        metaToggle.Unchecked += (_, _) => ConfigureColumns();
+        metaToggle.Checked += (_, _) => RefreshMetaPresentation();
+        metaToggle.Unchecked += (_, _) => RefreshMetaPresentation();
         var moduleRowContent = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(metaToggle, Dock.Right);
         moduleRowContent.Children.Add(metaToggle);
@@ -1142,6 +1142,12 @@ public sealed partial class MainWindow : Window
             });
     }
 
+    void RefreshMetaPresentation()
+    {
+        ConfigureColumns();
+        if (playerTabs.Any(tab => ReferenceEquals(tab.Button, activeEntityButton))) RenderEditor();
+    }
+
     PlayerFilter BuildCurrentFilter() => new()
     {
         NameQuery = search.Text,
@@ -1456,6 +1462,19 @@ public sealed partial class MainWindow : Window
         }
 
         commands.Children.Insert(0, new FavoriteStar(player.Id));
+        if (metaToggle.IsChecked == true)
+        {
+            commands.Children.Insert(1, UiKit.StatBox("MCA", new TextBlock
+            {
+                Text = ScoutingMetrics.McaRounded(player).ToString(Inv),
+                FontSize = 16,
+                FontWeight = FontWeight.Black,
+                Foreground = Brush("#C084FC"),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                MinWidth = 34,
+            }));
+        }
         var portrait = graphics.Image("person", player.Id, 72);
         var identityHeader = UiKit.EntityBanner(player.DisplayName, badges, commands.Children.Count > 0 ? commands : null, portrait);
         if (playerTab is not null)
