@@ -1035,7 +1035,7 @@ public sealed partial class MainWindow : Window
                     CellStyleClasses = { "numeric" },
                     CellTemplate = new FuncDataTemplate<PlayerRecord>((p, _) => new TextBlock
                     {
-                        Text = p is null ? "" : "0",
+                        Text = p is null ? "" : ScoutingMetrics.Mca(p).ToString("0.00", Inv),
                         HorizontalAlignment = HorizontalAlignment.Right,
                         VerticalAlignment = VerticalAlignment.Center,
                         Margin = new Thickness(8, 0),

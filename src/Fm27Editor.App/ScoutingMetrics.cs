@@ -10,6 +10,8 @@ internal static class ScoutingMetrics
     {
         int rca;
         bool hasRca;
+        double mca;
+        bool hasMca;
         RoleScore bestRole = default!;
         bool hasBestRole;
 
@@ -39,6 +41,19 @@ internal static class ScoutingMetrics
             }
         }
 
+        public double Mca
+        {
+            get
+            {
+                if (Volatile.Read(ref hasMca)) return mca;
+                lock (this)
+                {
+                    if (!hasMca) { mca = McaCalculator.Calculate(player); Volatile.Write(ref hasMca, true); }
+                    return mca;
+                }
+            }
+        }
+
         public DateOnly? Date;
         public int? Floor;
         public PersonalityClassification? Personality;
@@ -46,6 +61,7 @@ internal static class ScoutingMetrics
     static ConditionalWeakTable<PlayerRecord, Entry> entries = new();
     static Entry Get(PlayerRecord player) => entries.GetValue(player, p => new(p));
     public static int Rca(PlayerRecord player) => Get(player).Rca;
+    public static double Mca(PlayerRecord player) => Get(player).Mca;
     public static RoleScore BestRole(PlayerRecord player) => Get(player).BestRole;
     public static PersonalityClassification Personality(PlayerRecord player)
     {
@@ -59,5 +75,5 @@ internal static class ScoutingMetrics
     }
     public static void Reset() => entries = new();
     public static void Warm(IEnumerable<PlayerRecord> players) =>
-        Parallel.ForEach(players, player => { _ = Get(player); _ = Personality(player); });
+        Parallel.ForEach(players, player => { _ = Get(player).Mca; _ = Personality(player); });
 }
