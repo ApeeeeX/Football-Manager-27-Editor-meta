@@ -23,7 +23,7 @@ public sealed partial class MainWindow : Window
     readonly CheckBox metaToggle = new()
     {
         Content = "META",
-        IsChecked = false,
+        IsChecked = MetaSetting.EnableAtStartup,
         FontSize = 12.5,
         VerticalAlignment = VerticalAlignment.Center,
         Foreground = UiKit.TextMuted,

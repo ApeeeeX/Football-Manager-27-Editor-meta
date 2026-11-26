@@ -21,6 +21,7 @@ public sealed class App : Application
         Fm27Editor.Core.Settings.LanguageSetting.Load();
         Fm27Editor.Core.Settings.DateSetting.Load();
         Fm27Editor.Core.Settings.CurrencySetting.Load();
+        Fm27Editor.Core.Settings.MetaSetting.Load();
         Fm27Editor.Core.Settings.GameCurrency.TryApply();
         RequestedThemeVariant = AppTheme.Variant;
         Styles.Add(new FluentTheme());

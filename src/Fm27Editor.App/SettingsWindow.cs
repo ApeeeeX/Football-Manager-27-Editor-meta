@@ -106,6 +106,15 @@ public sealed partial class MainWindow
         Grid.SetColumn(langCombo, 1);
         langRow.Children.Add(langLabel); langRow.Children.Add(langCombo);
 
+        var metaStartup = new CheckBox
+        {
+            Content = Loc.S("Enable META at startup"),
+            IsChecked = MetaSetting.EnableAtStartup,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = UiKit.TextSecondary,
+        };
+        metaStartup.IsCheckedChanged += (_, _) => MetaSetting.SetEnableAtStartup(metaStartup.IsChecked == true);
+
         var chooseGraphics = Loc.BindContent(new Button { HorizontalAlignment = HorizontalAlignment.Left }, "Choose Graphics Folder…");
         var graphicsPath = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = UiKit.TextSecondary };
         void ShowGraphicsPath()
@@ -119,7 +128,7 @@ public sealed partial class MainWindow
         {
             Title = Loc.S("Settings"), Width = 470, SizeToContent = SizeToContent.Height, CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = UiKit.WindowBg,
-            Content = new StackPanel { Margin = new Thickness(20), Spacing = 14, Children = { row, currencyRow, langRow, graphicsRow } },
+            Content = new StackPanel { Margin = new Thickness(20), Spacing = 14, Children = { row, currencyRow, langRow, metaStartup, graphicsRow } },
         };
         chooseGraphics.Click += async (_, _) =>
         {
@@ -134,6 +143,7 @@ public sealed partial class MainWindow
             label.Text = Loc.S("Date format");
             currencyLabel.Text = Loc.S("Currency");
             langLabel.Text = Loc.S("Language");
+            metaStartup.Content = Loc.S("Enable META at startup");
         }
         LanguageSetting.Changed += RefreshLang;
         settingsWindow = window;
