@@ -1264,7 +1264,7 @@ public sealed partial class MainWindow : Window
         { if (immediate) throw new InvalidOperationException("The player filter changed while loading"); return; }
         var prevSelectedAddress = selected?.Address;
         updating = true;
-        grid.ItemsSource = result;
+        ToolGrid.SetItems(grid, result);
         exportCsvButton.IsEnabled = exportJsonButton.IsEnabled = module is PlayersModule;
         PlayerRecord? nextSelection = null;
         if (prevSelectedAddress is { } addr)
