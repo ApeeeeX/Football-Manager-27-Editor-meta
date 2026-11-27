@@ -264,6 +264,7 @@ public sealed partial class MainWindow : Window
         shell.Children.Add(root);
         shell.Children.Add(BuildSearchOverlay());
         Content = shell;
+        AddModuleTab("My Club", new Grid { Background = UiKit.WindowBg }, null);
         AddModuleTab("Players", playersHost, null);
 
         modules.ItemsSource = Modules.Registered;
@@ -332,7 +333,7 @@ public sealed partial class MainWindow : Window
         awardScreen = AddScreen(host => new AwardScreen(host));
         refereeScreen = AddScreen(host => new RefereeScreen(host));
         AddScreen(host => new InjuryTypeScreen(host));
-        ShowModule("Players");
+        ShowModule("My Club");
     }
 
     void OnSectionEdited(string entity, bool dirty)

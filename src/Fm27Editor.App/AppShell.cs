@@ -476,7 +476,7 @@ public sealed partial class MainWindow
     void GoHome()
     {
         CloseUnified();
-        ShowModule(activeModule ?? "Players");
+        ShowModule(activeModule ?? "My Club");
     }
 
     sealed class PlayerTab
@@ -674,7 +674,7 @@ public sealed partial class MainWindow
             entityStrip.Children.Remove(kind.Button);
             activeEntityButton = null;
             UpdateEntityRow();
-            ShowModule(activeModule ?? "Players");
+            ShowModule(activeModule ?? "My Club");
         }
     }
     async Task<bool> ConfirmCloseAsync(PlayerTab? player, KindTab? kind)
