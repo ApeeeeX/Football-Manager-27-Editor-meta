@@ -264,7 +264,8 @@ public sealed partial class MainWindow : Window
         shell.Children.Add(root);
         shell.Children.Add(BuildSearchOverlay());
         Content = shell;
-        AddModuleTab("My Club", new Grid { Background = UiKit.WindowBg }, null);
+        myClubView = new MyClubCompositionView(this);
+        AddModuleTab("My Club", myClubView.Root, null);
         AddModuleTab("Players", playersHost, null);
 
         modules.ItemsSource = Modules.Registered;
@@ -961,6 +962,7 @@ public sealed partial class MainWindow : Window
         {
             if (!loaded && activeEntityButton is not null)
                 ShowUnavailableEntityTab(Loc.S("Load Game to refresh this tab."));
+            myClubView?.RefreshFromCurrentGame();
             HideLoading();
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
             FlightRecorder.Current?.Log("load", $"{(loaded && report.Succeeded ? "ready" : "incomplete")}: {elapsed.ElapsedMilliseconds} ms; errors {report.Errors.Count}");
@@ -1016,6 +1018,7 @@ public sealed partial class MainWindow : Window
                     ActivatePlayerTab(active);
             }
             UpdateConnectionBadge();
+            myClubView?.RefreshFromCurrentGame();
             if (rows.Count == 0) status.Text = Loc.S("0 players");
             FlightRecorder.Current?.Log("game", $"loaded {rows.Count} {module.Title} rows in {elapsed.ElapsedMilliseconds} ms");
         }

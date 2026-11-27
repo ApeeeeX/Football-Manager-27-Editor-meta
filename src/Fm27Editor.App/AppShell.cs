@@ -795,6 +795,7 @@ public sealed partial class MainWindow
         root.IsVisible = true;
         SelectModuleNavigation(header);
         UpdateModuleBarStyles();
+        if (header == "My Club") myClubView?.RefreshFromCurrentGame();
     }
 
     void SelectModuleNavigation(string header)
